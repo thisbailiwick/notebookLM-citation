@@ -1,5 +1,19 @@
 // background.js - Background service worker for NotebookLM Citation Mapper
 
+// Hosts NotebookLM is served from. Google moved the app from
+// notebooklm.google.com to notebook.google.com; the old host now redirects,
+// but keep it listed so older links/tabs still work.
+const NOTEBOOKLM_HOSTS = ['notebook.google.com', 'notebooklm.google.com'];
+const NOTEBOOKLM_URL_PATTERNS = NOTEBOOKLM_HOSTS.map(host => `https://${host}/*`);
+
+function isNotebookLMUrl(url) {
+  try {
+    return NOTEBOOKLM_HOSTS.includes(new URL(url).hostname);
+  } catch (e) {
+    return false;
+  }
+}
+
 // Listen for extension installation
 chrome.runtime.onInstalled.addListener(() => {
   console.log('NotebookLM Citation Mapper installed');
@@ -9,7 +23,7 @@ chrome.runtime.onInstalled.addListener(() => {
     id: 'notebooklm-citation-mapper',
     title: 'Show Citation Mappings',
     contexts: ['page'],
-    documentUrlPatterns: ['https://notebooklm.google.com/*']
+    documentUrlPatterns: NOTEBOOKLM_URL_PATTERNS
   });
 });
 
@@ -23,7 +37,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
 // Listen for tab updates to inject content script if needed
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete' && tab.url && tab.url.includes('notebooklm.google.com')) {
+  if (changeInfo.status === 'complete' && tab.url && isNotebookLMUrl(tab.url)) {
     // Content script should be automatically injected via manifest
     // This is just a fallback if needed
     chrome.scripting.executeScript({
