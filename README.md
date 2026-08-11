@@ -101,6 +101,27 @@ cited from three answers appears three times. Grouping the numbers under one
 definition is tidier to read, but leaves the other labels undefined and an
 editor that resolves footnotes then has nothing to jump to.
 
+## Tests
+
+```bash
+npm install
+npm test
+```
+
+142 tests covering citation extraction, Markdown conversion, renumbering, the
+sources block, list expansion, snippet reading, the export pipeline, the popup
+helpers, and the manifest. They run on Node's built-in test runner against a
+jsdom copy of NotebookLM's DOM — no browser, no network.
+
+The suite takes around 15 seconds. Most of that is four tests that wait out a
+real timeout: giving up on a citation whose tooltip never opens, and on an
+expander that reveals nothing.
+
+`tests/loading.test.js` is the one to keep an eye on. Every other suite loads
+`content.js` and `popup.js` as Node modules, which takes a test-only branch, so
+these run them as plain scripts with no `module` in scope — the path Chrome
+takes — and check the service worker still loads.
+
 ## How It Works
 
 The extension uses three main components:
@@ -159,6 +180,7 @@ The extension uses three main components:
 - **Exchange selection.** Pick which questions to include; all by default.
 - **A single sources block** at the end of the export, instead of one after
   every answer.
+- **A test suite.** There was none; see [Tests](#tests).
 - **Per-answer grouping** in the popup's citation list.
 
 ## Known Limitations

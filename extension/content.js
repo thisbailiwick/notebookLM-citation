@@ -645,7 +645,7 @@
     observer.observe(document.body, { childList: true, subtree: true });
   }
 
-  chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+  function handleMessage(request, _sender, sendResponse) {
     if (request.action === 'getMappings') {
       sendResponse({ mappings: currentMappings });
     } else if (request.action === 'rescan' || request.action === 'showMappings') {
@@ -670,7 +670,26 @@
         }))
       });
     }
-  });
+  }
+
+  // Node loads this file as a module to test it. Hand back the internals and
+  // stop here: the bootstrap below wants a live NotebookLM tab, and a content
+  // script never sees a `module` in the browser's isolated world.
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+      roleOf, citationNumber, citationFilename, markersByNumber,
+      messageElements, collectMessages, collectExchanges, exchangePreview,
+      expanderButtons, expandCitationLists, autoExpandMessages,
+      tooltipSnapshot, readSnippet, harvestSnippets, hoverOn, hoverOff,
+      paragraphsOf, truncate, renderMarker, inlineText, listDepth, blockFor,
+      joinBlocks, messageText, localNumbers, assignGlobalNumbers, citationsOf,
+      sourceKey, dedupeSources, allCitations, sourcesBlock, buildDocument,
+      mapCitations, buildExport, handleMessage
+    };
+    return;
+  }
+
+  chrome.runtime.onMessage.addListener(handleMessage);
 
   setTimeout(() => autoExpandMessages().then(mapCitations), 2000);
   observeCitations();

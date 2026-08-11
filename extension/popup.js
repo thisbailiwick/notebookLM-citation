@@ -5,6 +5,110 @@
 // but keep it listed so older links/tabs still work.
 const NOTEBOOKLM_HOSTS = ['notebook.google.com', 'notebooklm.google.com'];
 
+// ---------------------------------------------------------------------------
+// Pure helpers, kept at module scope rather than inside the DOMContentLoaded
+// handler so the test suite can reach them without a popup document.
+// ---------------------------------------------------------------------------
+
+function escapeHTML(text) {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+// Same passage, same file means the same source. Mirrors sourceKey in
+// content.js so rich text groups its sources exactly like the markdown does.
+function sourceKey(citation) {
+  return citation.filename + ' ' + (citation.snippet || '').replace(/\s+/g, ' ').trim();
+}
+
+function dedupeSources(answers) {
+  const byKey = new Map();
+  (answers || []).forEach(answer => {
+    (answer.citations || []).forEach(c => {
+      const existing = byKey.get(sourceKey(c));
+      if (existing) {
+        if (existing.numbers.indexOf(c.citation) === -1) existing.numbers.push(c.citation);
+        return;
+      }
+      byKey.set(sourceKey(c), {
+        filename: c.filename, snippet: c.snippet, numbers: [c.citation]
+      });
+    });
+  });
+  return Array.from(byKey.values());
+}
+
+// One sources list for the whole export, each entry carrying every number
+// that refers to it, so a passage cited from four answers appears once.
+function generateRichHTML(response) {
+  const style = response.style || 'none';
+  const withSnippets = style === 'footnotes' || style === 'inline-short';
+  let html = '<div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6;">';
+
+  (response.answers || []).forEach(answer => {
+    // The plain flavor, not the markdown one - "**bold**" would render as
+    // literal asterisks once this is pasted as HTML.
+    let body = escapeHTML(answer.plain || answer.text)
+      .replace(/\[(\d+)\]/g, '<strong style="color: #4285f4;">[$1]</strong>')
+      .replace(/\n/g, '<br>');
+    if (answer.role === 'question') {
+      html += `<p style="font-weight: bold; margin: 16px 0 8px;">${body}</p>`;
+    } else {
+      html += `<p style="margin: 0 0 12px;">${body}</p>`;
+    }
+
+  });
+
+  const sources = style === 'inline' ? [] : dedupeSources(response.answers);
+  if (sources.length) {
+    html += '<hr style="border: none; border-top: 1px solid #ccc; margin: 16px 0;">';
+    html += '<p style="font-weight: bold; margin-bottom: 8px;">Sources:</p>';
+    html += '<ul style="margin: 0; padding-left: 20px;">';
+    sources.forEach(s => {
+      const numbers = s.numbers.map(n => `[${n}]`).join(' ');
+      html += `<li style="margin-bottom: 8px;"><strong style="color: #4285f4;">${numbers}</strong> ${escapeHTML(s.filename)}`;
+      if (withSnippets && s.snippet) {
+        html += `<div style="color: #555; font-style: italic; margin: 4px 0 0;">“${escapeHTML(s.snippet)}”</div>`;
+      }
+      html += '</li>';
+    });
+    html += '</ul>';
+  }
+
+  return html + '</div>';
+}
+
+// Flat citation list for history/statistics, which predate per-answer scoping.
+// Falls back to the page-wide mappings when an export carried none.
+function flattenCitations(response, fallback) {
+  const flat = [];
+  ((response && response.answers) || []).forEach(answer => {
+    (answer.citations || []).forEach(c => flat.push(c));
+  });
+  return flat.length ? flat : (fallback || []);
+}
+
+// Citation numbers restart in every answer, so group by answer instead of
+// sorting into one list where [1] would appear several times over.
+function groupByAnswer(mappings) {
+  const byAnswer = new Map();
+  mappings.forEach(mapping => {
+    const key = mapping.answer || 1;
+    if (!byAnswer.has(key)) byAnswer.set(key, []);
+    byAnswer.get(key).push(mapping);
+  });
+  return byAnswer;
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    escapeHTML, sourceKey, dedupeSources, generateRichHTML,
+    flattenCitations, groupByAnswer, NOTEBOOKLM_HOSTS
+  };
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   const statusText = document.getElementById('status-text');
   const mappingsContainer = document.getElementById('mappings-container');
@@ -166,15 +270,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       );
     });
-  }
-
-  // Flat citation list for history/statistics, which predate per-answer scoping.
-  function flattenCitations(response) {
-    const flat = [];
-    (response.answers || []).forEach(answer => {
-      (answer.citations || []).forEach(c => flat.push(c));
-    });
-    return flat.length ? flat : currentMappings;
   }
 
   // Storage helper functions
@@ -373,15 +468,7 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
 
-    // Citation numbers restart in every answer, so group by answer instead of
-    // sorting into one list where [1] would appear several times over.
-    const byAnswer = new Map();
-    mappings.forEach(mapping => {
-      const key = mapping.answer || 1;
-      if (!byAnswer.has(key)) byAnswer.set(key, []);
-      byAnswer.get(key).push(mapping);
-    });
-
+    const byAnswer = groupByAnswer(mappings);
     const answerCount = byAnswer.size;
     statusText.textContent =
       `Found ${mappings.length} citation${mappings.length > 1 ? 's' : ''}` +
@@ -499,7 +586,7 @@ document.addEventListener('DOMContentLoaded', function() {
     requestExport(function(response) {
       copyToClipboard(response.chatText);
 
-      const citations = flattenCitations(response);
+      const citations = flattenCitations(response, currentMappings);
       saveToHistory(response.chatText, citations, 'chat');
       updateStatistics(citations);
 
@@ -536,76 +623,6 @@ document.addEventListener('DOMContentLoaded', function() {
     chrome.tabs.create({ url: 'settings.html' });
   });
 
-  function escapeHTML(text) {
-    return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;');
-  }
-
-  // Same passage, same file means the same source. Mirrors sourceKey in
-  // content.js so rich text groups its sources exactly like the markdown does.
-  function sourceKey(citation) {
-    return citation.filename + ' ' + (citation.snippet || '').replace(/\s+/g, ' ').trim();
-  }
-
-  function dedupeSources(answers) {
-    const byKey = new Map();
-    (answers || []).forEach(answer => {
-      (answer.citations || []).forEach(c => {
-        const existing = byKey.get(sourceKey(c));
-        if (existing) {
-          if (existing.numbers.indexOf(c.citation) === -1) existing.numbers.push(c.citation);
-          return;
-        }
-        byKey.set(sourceKey(c), {
-          filename: c.filename, snippet: c.snippet, numbers: [c.citation]
-        });
-      });
-    });
-    return Array.from(byKey.values());
-  }
-
-  // One sources list for the whole export, each entry carrying every number
-  // that refers to it, so a passage cited from four answers appears once.
-  function generateRichHTML(response) {
-    const style = response.style || 'none';
-    const withSnippets = style === 'footnotes' || style === 'inline-short';
-    let html = '<div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6;">';
-
-    (response.answers || []).forEach(answer => {
-      // The plain flavor, not the markdown one - "**bold**" would render as
-      // literal asterisks once this is pasted as HTML.
-      let body = escapeHTML(answer.plain || answer.text)
-        .replace(/\[(\d+)\]/g, '<strong style="color: #4285f4;">[$1]</strong>')
-        .replace(/\n/g, '<br>');
-      if (answer.role === 'question') {
-        html += `<p style="font-weight: bold; margin: 16px 0 8px;">${body}</p>`;
-      } else {
-        html += `<p style="margin: 0 0 12px;">${body}</p>`;
-      }
-
-    });
-
-    const sources = style === 'inline' ? [] : dedupeSources(response.answers);
-    if (sources.length) {
-      html += '<hr style="border: none; border-top: 1px solid #ccc; margin: 16px 0;">';
-      html += '<p style="font-weight: bold; margin-bottom: 8px;">Sources:</p>';
-      html += '<ul style="margin: 0; padding-left: 20px;">';
-      sources.forEach(s => {
-        const numbers = s.numbers.map(n => `[${n}]`).join(' ');
-        html += `<li style="margin-bottom: 8px;"><strong style="color: #4285f4;">${numbers}</strong> ${escapeHTML(s.filename)}`;
-        if (withSnippets && s.snippet) {
-          html += `<div style="color: #555; font-style: italic; margin: 4px 0 0;">“${escapeHTML(s.snippet)}”</div>`;
-        }
-        html += '</li>';
-      });
-      html += '</ul>';
-    }
-
-    return html + '</div>';
-  }
-
   // Copy Rich Text (HTML) to clipboard
   copyRichBtn.addEventListener('click', function() {
     copyRichBtn.disabled = true;
@@ -633,7 +650,7 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
       }
 
-      const citations = flattenCitations(response);
+      const citations = flattenCitations(response, currentMappings);
       saveToHistory(response.chatText, citations, 'rich');
       updateStatistics(citations);
 
@@ -702,7 +719,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const timestamp = new Date().toISOString().slice(0, 10);
         doc.save(`notebooklm-export-${timestamp}.pdf`);
 
-        const citations = flattenCitations(response);
+        const citations = flattenCitations(response, currentMappings);
         saveToHistory(response.plainText || response.chatText, citations, 'pdf');
         updateStatistics(citations);
 
