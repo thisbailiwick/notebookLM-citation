@@ -60,7 +60,7 @@ The extension uses three main components:
 
 - **content.js**: Scans the page for citation markers (using `aria-label` attributes) and extracts chat text
 - **popup.js**: Provides the popup interface when clicking the extension icon
-- **background.js**: Handles context menu integration and background tasks
+- **background.js**: Service worker; the popup talks to the content script directly
 
 ### Technical Details
 
