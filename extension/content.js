@@ -37,6 +37,9 @@
 
   let isMapping = false;
   let currentMappings = [];
+  // Marker count per message after the last auto-expand pass, so a pass is only
+  // repeated when a message actually gains content.
+  const autoExpandState = new WeakMap();
 
   // ---------------------------------------------------------------- messages
 
@@ -134,6 +137,25 @@
       const grew = await waitUntil(
         () => root.querySelectorAll(MARKER_SELECTOR).length !== before, EXPAND_MS);
       if (!grew) break;
+    }
+    return clicked;
+  }
+
+  // What the "Auto-expand citation ellipses" setting actually does: expand
+  // collapsed lists on the page as it loads, rather than only when exporting.
+  async function autoExpandMessages() {
+    const settings = await loadSettings();
+    if (settings.autoExpand === false) return 0;
+
+    let clicked = 0;
+    for (const el of messageElements()) {
+      const count = el.querySelectorAll(MARKER_SELECTOR).length;
+      const seen = autoExpandState.get(el);
+      // Only act on growth. A shrinking count means the reader collapsed a list
+      // by hand, and re-expanding it on the next mutation would fight them.
+      if (seen !== undefined && count <= seen) continue;
+      clicked += await expandCitationLists(el);
+      autoExpandState.set(el, el.querySelectorAll(MARKER_SELECTOR).length);
     }
     return clicked;
   }
@@ -565,7 +587,10 @@
         clearTimeout(window.__notebooklmCitationLegendTimeout);
       }
       window.__notebooklmCitationLegendTimeout = setTimeout(() => {
-        if (!isMapping) mapCitations();
+        // Expanding clicks buttons, which mutates the DOM and re-enters here.
+        // That settles: once a message has no "more" controls left, the next
+        // pass is a no-op.
+        if (!isMapping) autoExpandMessages().then(mapCitations);
       }, 500);
     });
     observer.observe(document.body, { childList: true, subtree: true });
@@ -598,6 +623,6 @@
     }
   });
 
-  setTimeout(mapCitations, 2000);
+  setTimeout(() => autoExpandMessages().then(mapCitations), 2000);
   observeCitations();
 })();
