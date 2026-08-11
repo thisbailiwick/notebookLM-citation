@@ -15,8 +15,99 @@ document.addEventListener('DOMContentLoaded', function() {
   const rescanBtn = document.getElementById('rescan-btn');
   const settingsBtn = document.getElementById('settings-btn');
   const errorMessage = document.getElementById('error-message');
+  const styleSelect = document.getElementById('citation-style');
+  const styleHint = document.getElementById('citation-style-hint');
+  const progressText = document.getElementById('progress-text');
 
   let currentMappings = [];
+
+  // Snippet styles. Anything other than 'none' has to hover every citation on
+  // the page to read its source text out of the tooltip overlay, which is why
+  // the hint warns about it.
+  const STYLE_HINTS = {
+    'none': 'Fastest. Sources are listed by filename after each answer.',
+    'footnotes': 'Full snippet listed once per citation, after each answer.',
+    'inline': 'Full snippet spliced in at every citation. Longest output.',
+    'inline-short': 'Short quote at each citation, full snippet in the footnotes.'
+  };
+
+  function currentStyle() {
+    return styleSelect ? styleSelect.value : 'none';
+  }
+
+  function updateStyleHint() {
+    if (!styleHint) return;
+    const hint = STYLE_HINTS[currentStyle()] || '';
+    const slow = currentStyle() !== 'none'
+      ? ' Reading snippets takes a few seconds.' : '';
+    styleHint.textContent = hint + slow;
+  }
+
+  // Remember the last choice so exports are repeatable without re-picking.
+  chrome.storage.sync.get(['citationStyle'], (result) => {
+    if (result.citationStyle && styleSelect) styleSelect.value = result.citationStyle;
+    updateStyleHint();
+  });
+
+  if (styleSelect) {
+    styleSelect.addEventListener('change', () => {
+      chrome.storage.sync.set({ citationStyle: currentStyle() });
+      updateStyleHint();
+    });
+  }
+
+  function showProgress(message) {
+    if (!progressText) return;
+    progressText.textContent = message;
+    progressText.style.display = message ? 'block' : 'none';
+  }
+
+  chrome.runtime.onMessage.addListener((request) => {
+    if (request.action === 'harvestProgress') {
+      showProgress(request.total
+        ? `Reading source snippets… ${request.done}/${request.total}`
+        : 'Reading source snippets…');
+    }
+  });
+
+  // Single path to the content script for all three export buttons.
+  function requestExport(onDone, onFail) {
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+      if (!tabs || tabs.length === 0) {
+        showProgress('');
+        onFail('No active tab found.');
+        return;
+      }
+      chrome.tabs.sendMessage(
+        tabs[0].id,
+        { action: 'getChatText', style: currentStyle() },
+        function (response) {
+          showProgress('');
+          if (chrome.runtime.lastError || !response) {
+            onFail('Error extracting chat text. Please refresh the page.');
+            return;
+          }
+          if (!response.chatText) {
+            onFail(response.error || 'No chat text found.');
+            return;
+          }
+          if (response.stats && response.stats.missing) {
+            showError(`${response.stats.missing} snippet(s) could not be read.`);
+          }
+          onDone(response);
+        }
+      );
+    });
+  }
+
+  // Flat citation list for history/statistics, which predate per-answer scoping.
+  function flattenCitations(response) {
+    const flat = [];
+    (response.answers || []).forEach(answer => {
+      (answer.citations || []).forEach(c => flat.push(c));
+    });
+    return flat.length ? flat : currentMappings;
+  }
 
   // Storage helper functions
   function saveToHistory(text, mappings, type) {
@@ -213,24 +304,47 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
 
-    statusText.textContent = `Found ${mappings.length} citation${mappings.length > 1 ? 's' : ''}`;
-    statusText.style.color = '#188038';
-
-    // Sort mappings by citation number
-    mappings.sort((a, b) => parseInt(a.citation) - parseInt(b.citation));
-
-    // Build HTML
-    let html = '';
+    // Citation numbers restart in every answer, so group by answer instead of
+    // sorting into one list where [1] would appear several times over.
+    const byAnswer = new Map();
     mappings.forEach(mapping => {
-      html += `
-        <div class="mapping-item">
-          <span class="citation-num">Citation ${mapping.citation}</span> →
-          ${mapping.filename}
-        </div>
-      `;
+      const key = mapping.answer || 1;
+      if (!byAnswer.has(key)) byAnswer.set(key, []);
+      byAnswer.get(key).push(mapping);
     });
 
-    mappingsContainer.innerHTML = html;
+    const answerCount = byAnswer.size;
+    statusText.textContent =
+      `Found ${mappings.length} citation${mappings.length > 1 ? 's' : ''}` +
+      (answerCount > 1 ? ` across ${answerCount} answers` : '');
+    statusText.style.color = '#188038';
+
+    // Built as DOM rather than innerHTML: filenames come from the page and can
+    // contain characters that would otherwise be parsed as markup.
+    mappingsContainer.textContent = '';
+    Array.from(byAnswer.keys()).sort((a, b) => a - b).forEach(key => {
+      if (answerCount > 1) {
+        const heading = document.createElement('div');
+        heading.className = 'mapping-item';
+        heading.style.fontWeight = 'bold';
+        heading.style.opacity = '0.7';
+        heading.textContent = `Answer ${key}`;
+        mappingsContainer.appendChild(heading);
+      }
+
+      byAnswer.get(key)
+        .sort((a, b) => parseInt(a.citation, 10) - parseInt(b.citation, 10))
+        .forEach(mapping => {
+          const row = document.createElement('div');
+          row.className = 'mapping-item';
+          const num = document.createElement('span');
+          num.className = 'citation-num';
+          num.textContent = `Citation ${mapping.citation}`;
+          row.appendChild(num);
+          row.appendChild(document.createTextNode(` → ${mapping.filename}`));
+          mappingsContainer.appendChild(row);
+        });
+    });
     copyBtn.disabled = false;
     copyChatBtn.disabled = false;
     copyRichBtn.disabled = false;
@@ -301,72 +415,42 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
 
-  // Copy chat text with citations
+  // Copy chat text with citations. The content script already applied the
+  // selected snippet style, so chatText is ready to use as-is.
   copyChatBtn.addEventListener('click', function() {
-    if (currentMappings.length === 0) {
-      showError('No citations found. Please rescan.');
-      return;
-    }
-
     copyChatBtn.disabled = true;
     copyChatBtn.textContent = 'Extracting text...';
 
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      if (!tabs || tabs.length === 0) {
-        showError('No active tab found.');
-        copyChatBtn.disabled = false;
-        copyChatBtn.textContent = '📄 Copy Text with Sources';
-        return;
-      }
-      chrome.tabs.sendMessage(tabs[0].id, {action: 'getChatText'}, function(response) {
-        if (chrome.runtime.lastError || !response) {
-          showError('Error extracting chat text.');
-          copyChatBtn.disabled = false;
-          copyChatBtn.textContent = '📄 Copy Text with Sources';
-          return;
-        }
+    const restore = () => {
+      copyChatBtn.textContent = '📄 Copy Text with Sources';
+      copyChatBtn.style.background = '#34a853';
+      copyChatBtn.disabled = false;
+    };
 
-        if (!response.chatText) {
-          showError('No chat text found.');
-          copyChatBtn.disabled = false;
-          copyChatBtn.textContent = '📄 Copy Text with Sources';
-          return;
-        }
+    requestExport(function(response) {
+      copyToClipboard(response.chatText);
 
-        // Build the full text with citations at the end
-        let fullText = response.chatText;
-        fullText += '\n\n─────────────────────\n';
-        fullText += 'Sources:\n';
+      const citations = flattenCitations(response);
+      saveToHistory(response.chatText, citations, 'chat');
+      updateStatistics(citations);
 
-        // Add citation mappings
-        currentMappings.forEach(mapping => {
-          fullText += `[${mapping.citation}] → ${mapping.filename}\n`;
-        });
-
-        // Copy to clipboard
-        const textArea = document.createElement('textarea');
-        textArea.value = fullText;
-        document.body.appendChild(textArea);
-        textArea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textArea);
-
-        // Save to history and update statistics
-        saveToHistory(fullText, currentMappings, 'chat');
-        updateStatistics(currentMappings);
-
-        // Show feedback
-        copyChatBtn.textContent = '✓ Copied!';
-        copyChatBtn.style.background = '#188038';
-
-        setTimeout(() => {
-          copyChatBtn.textContent = '📄 Copy Text with Sources';
-          copyChatBtn.style.background = '#34a853';
-          copyChatBtn.disabled = false;
-        }, 2000);
-      });
+      copyChatBtn.textContent = '✓ Copied!';
+      copyChatBtn.style.background = '#188038';
+      setTimeout(restore, 2000);
+    }, function(message) {
+      showError(message);
+      restore();
     });
   });
+
+  function copyToClipboard(text) {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    document.body.appendChild(textArea);
+    textArea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textArea);
+  }
 
   // Show error message
   function showError(message) {
@@ -383,245 +467,159 @@ document.addEventListener('DOMContentLoaded', function() {
     chrome.tabs.create({ url: 'settings.html' });
   });
 
-  // Generate Rich HTML from text and mappings
-  function generateRichHTML(text, mappings) {
-    // Escape HTML entities
-    let htmlText = text
+  function escapeHTML(text) {
+    return text
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
+  }
 
-    // Replace citation markers [N] with bold styled versions
-    htmlText = htmlText.replace(/\[(\d+)\]/g, '<strong style="color: #4285f4;">[$1]</strong>');
+  // Generate Rich HTML per answer, so each answer keeps its own citation
+  // numbering instead of being flattened into one page-wide list.
+  function generateRichHTML(response) {
+    const style = response.style || 'none';
+    const withSnippets = style === 'footnotes' || style === 'inline-short';
+    let html = '<div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6;">';
 
-    // Replace newlines with <br> for proper line breaks
-    htmlText = htmlText.replace(/\n/g, '<br>');
+    (response.answers || []).forEach(answer => {
+      let body = escapeHTML(answer.text)
+        .replace(/\[(\d+)\]/g, '<strong style="color: #4285f4;">[$1]</strong>')
+        .replace(/\n/g, '<br>');
+      if (answer.role === 'question') {
+        html += `<p style="font-weight: bold; margin: 16px 0 8px;">${body}</p>`;
+      } else {
+        html += `<p style="margin: 0 0 12px;">${body}</p>`;
+      }
 
-    // Build sources HTML
-    let sourcesHTML = '<hr style="border: none; border-top: 1px solid #ccc; margin: 16px 0;">';
-    sourcesHTML += '<p style="font-weight: bold; margin-bottom: 8px;">Sources:</p>';
-    sourcesHTML += '<ul style="margin: 0; padding-left: 20px;">';
-
-    mappings.forEach(mapping => {
-      sourcesHTML += `<li><strong style="color: #4285f4;">[${mapping.citation}]</strong> ${mapping.filename}</li>`;
+      if (style !== 'inline' && answer.citations && answer.citations.length) {
+        html += '<hr style="border: none; border-top: 1px solid #ccc; margin: 12px 0;">';
+        html += '<p style="font-weight: bold; margin-bottom: 8px;">Sources:</p>';
+        html += '<ul style="margin: 0 0 16px; padding-left: 20px;">';
+        answer.citations.forEach(c => {
+          html += `<li><strong style="color: #4285f4;">[${c.citation}]</strong> ${escapeHTML(c.filename)}`;
+          if (withSnippets && c.snippet) {
+            html += `<div style="color: #555; font-style: italic; margin: 4px 0 8px;">“${escapeHTML(c.snippet)}”</div>`;
+          }
+          html += '</li>';
+        });
+        html += '</ul>';
+      }
     });
 
-    sourcesHTML += '</ul>';
-
-    return `<div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6;">${htmlText}${sourcesHTML}</div>`;
+    return html + '</div>';
   }
 
   // Copy Rich Text (HTML) to clipboard
   copyRichBtn.addEventListener('click', function() {
-    if (currentMappings.length === 0) {
-      showError('No citations found. Please rescan.');
-      return;
-    }
-
     copyRichBtn.disabled = true;
     copyRichBtn.textContent = 'Extracting text...';
 
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      if (!tabs || tabs.length === 0) {
-        showError('No active tab found.');
-        copyRichBtn.disabled = false;
-        copyRichBtn.textContent = '📝 Copy Rich Text';
+    const restore = () => {
+      copyRichBtn.textContent = '📝 Copy Rich Text';
+      copyRichBtn.style.background = '#4285f4';
+      copyRichBtn.disabled = false;
+    };
+
+    requestExport(async function(response) {
+      const richHTML = generateRichHTML(response);
+
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': new Blob([richHTML], {type: 'text/html'}),
+            'text/plain': new Blob([response.chatText], {type: 'text/plain'})
+          })
+        ]);
+      } catch (err) {
+        showError('Failed to copy rich text. Try plain copy instead.');
+        restore();
         return;
       }
-      chrome.tabs.sendMessage(tabs[0].id, {action: 'getChatText'}, async function(response) {
-        if (chrome.runtime.lastError || !response) {
-          showError('Error extracting chat text.');
-          copyRichBtn.disabled = false;
-          copyRichBtn.textContent = '📝 Copy Rich Text';
-          return;
-        }
 
-        if (!response.chatText) {
-          showError('No chat text found.');
-          copyRichBtn.disabled = false;
-          copyRichBtn.textContent = '📝 Copy Rich Text';
-          return;
-        }
+      const citations = flattenCitations(response);
+      saveToHistory(response.chatText, citations, 'rich');
+      updateStatistics(citations);
 
-        // Build plain text version
-        let plainText = response.chatText;
-        plainText += '\n\n─────────────────────\n';
-        plainText += 'Sources:\n';
-        currentMappings.forEach(mapping => {
-          plainText += `[${mapping.citation}] → ${mapping.filename}\n`;
-        });
-
-        // Generate rich HTML
-        const richHTML = generateRichHTML(response.chatText, currentMappings);
-
-        try {
-          // Use Clipboard API to copy both HTML and plain text
-          await navigator.clipboard.write([
-            new ClipboardItem({
-              'text/html': new Blob([richHTML], {type: 'text/html'}),
-              'text/plain': new Blob([plainText], {type: 'text/plain'})
-            })
-          ]);
-
-          // Save to history and update statistics
-          saveToHistory(plainText, currentMappings, 'rich');
-          updateStatistics(currentMappings);
-
-          // Show feedback
-          copyRichBtn.textContent = '✓ Copied!';
-          copyRichBtn.style.background = '#188038';
-
-          setTimeout(() => {
-            copyRichBtn.textContent = '📝 Copy Rich Text';
-            copyRichBtn.style.background = '#4285f4';
-            copyRichBtn.disabled = false;
-          }, 2000);
-
-        } catch (err) {
-          showError('Failed to copy rich text. Try plain copy instead.');
-          copyRichBtn.disabled = false;
-          copyRichBtn.textContent = '📝 Copy Rich Text';
-        }
-      });
+      copyRichBtn.textContent = '✓ Copied!';
+      copyRichBtn.style.background = '#188038';
+      setTimeout(restore, 2000);
+    }, function(message) {
+      showError(message);
+      restore();
     });
   });
 
-  // Export PDF
+  // Export PDF. chatText already carries the per-answer Sources blocks in the
+  // selected style, so there is no separate page-wide source list to append.
   exportPdfBtn.addEventListener('click', function() {
-    if (currentMappings.length === 0) {
-      showError('No citations found. Please rescan.');
-      return;
-    }
-
     exportPdfBtn.disabled = true;
     exportPdfBtn.textContent = 'Generating PDF...';
 
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      if (!tabs || tabs.length === 0) {
-        showError('No active tab found.');
-        exportPdfBtn.disabled = false;
-        exportPdfBtn.textContent = '📑 Export PDF';
-        return;
-      }
-      chrome.tabs.sendMessage(tabs[0].id, {action: 'getChatText'}, function(response) {
-        if (chrome.runtime.lastError || !response) {
-          showError('Error extracting chat text.');
-          exportPdfBtn.disabled = false;
-          exportPdfBtn.textContent = '📑 Export PDF';
+    const restore = () => {
+      exportPdfBtn.textContent = '📑 Export PDF';
+      exportPdfBtn.style.background = '#4285f4';
+      exportPdfBtn.disabled = false;
+    };
+
+    requestExport(function(response) {
+      try {
+        if (!window.jspdf || !window.jspdf.jsPDF) {
+          showError('PDF library failed to load. Please try again.');
+          restore();
           return;
         }
 
-        if (!response.chatText) {
-          showError('No chat text found.');
-          exportPdfBtn.disabled = false;
-          exportPdfBtn.textContent = '📑 Export PDF';
-          return;
-        }
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
 
-        try {
-          // Check if jsPDF is loaded
-          if (!window.jspdf || !window.jspdf.jsPDF) {
-            showError('PDF library failed to load. Please try again.');
-            exportPdfBtn.disabled = false;
-            exportPdfBtn.textContent = '📑 Export PDF';
-            return;
-          }
+        doc.setFontSize(18);
+        doc.setFont(undefined, 'bold');
+        doc.text('NotebookLM Export', 20, 20);
 
-          // Create PDF using jsPDF
-          const { jsPDF } = window.jspdf;
-          const doc = new jsPDF();
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'normal');
+        doc.setTextColor(100);
+        doc.text(new Date().toLocaleString(), 20, 28);
+        doc.setTextColor(0);
 
-          // Title
-          doc.setFontSize(18);
-          doc.setFont(undefined, 'bold');
-          doc.text('NotebookLM Export', 20, 20);
+        doc.setFontSize(11);
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const margin = 20;
+        const maxWidth = pageWidth - (margin * 2);
+        const lineHeight = 6;
 
-          // Date
-          doc.setFontSize(10);
-          doc.setFont(undefined, 'normal');
-          doc.setTextColor(100);
-          doc.text(new Date().toLocaleString(), 20, 28);
+        const lines = doc.splitTextToSize(response.chatText, maxWidth);
+        let yPosition = 40;
 
-          // Reset text color
-          doc.setTextColor(0);
-
-          // Main content
-          doc.setFontSize(11);
-          const pageWidth = doc.internal.pageSize.getWidth();
-          const margin = 20;
-          const maxWidth = pageWidth - (margin * 2);
-
-          // Split text to fit page width
-          const lines = doc.splitTextToSize(response.chatText, maxWidth);
-
-          let yPosition = 40;
-          const lineHeight = 6;
-          const pageHeight = doc.internal.pageSize.getHeight();
-
-          lines.forEach(line => {
-            if (yPosition > pageHeight - 30) {
-              doc.addPage();
-              yPosition = 20;
-            }
-            doc.text(line, margin, yPosition);
-            yPosition += lineHeight;
-          });
-
-          // Add separator
-          yPosition += 10;
-          if (yPosition > pageHeight - 50) {
+        lines.forEach(line => {
+          if (yPosition > pageHeight - 20) {
             doc.addPage();
             yPosition = 20;
           }
+          doc.text(line, margin, yPosition);
+          yPosition += lineHeight;
+        });
 
-          doc.setDrawColor(200);
-          doc.line(margin, yPosition, pageWidth - margin, yPosition);
-          yPosition += 10;
+        const timestamp = new Date().toISOString().slice(0, 10);
+        doc.save(`notebooklm-export-${timestamp}.pdf`);
 
-          // Sources header
-          doc.setFontSize(14);
-          doc.setFont(undefined, 'bold');
-          doc.text('Sources', margin, yPosition);
-          yPosition += 10;
+        const citations = flattenCitations(response);
+        saveToHistory(response.chatText, citations, 'pdf');
+        updateStatistics(citations);
 
-          // Sources list
-          doc.setFontSize(10);
-          doc.setFont(undefined, 'normal');
+        exportPdfBtn.textContent = '✓ Downloaded!';
+        exportPdfBtn.style.background = '#188038';
+        setTimeout(restore, 2000);
 
-          currentMappings.forEach(mapping => {
-            if (yPosition > pageHeight - 20) {
-              doc.addPage();
-              yPosition = 20;
-            }
-            doc.text(`[${mapping.citation}]  ${mapping.filename}`, margin, yPosition);
-            yPosition += 7;
-          });
-
-          // Save the PDF
-          const timestamp = new Date().toISOString().slice(0, 10);
-          doc.save(`notebooklm-export-${timestamp}.pdf`);
-
-          // Save to history and update statistics
-          saveToHistory(response.chatText, currentMappings, 'pdf');
-          updateStatistics(currentMappings);
-
-          // Show feedback
-          exportPdfBtn.textContent = '✓ Downloaded!';
-          exportPdfBtn.style.background = '#188038';
-
-          setTimeout(() => {
-            exportPdfBtn.textContent = '📑 Export PDF';
-            exportPdfBtn.style.background = '#4285f4';
-            exportPdfBtn.disabled = false;
-          }, 2000);
-
-        } catch (err) {
-          console.error('PDF export error:', err);
-          showError('Failed to generate PDF. Please try again.');
-          exportPdfBtn.disabled = false;
-          exportPdfBtn.textContent = '📑 Export PDF';
-        }
-      });
+      } catch (err) {
+        console.error('PDF export error:', err);
+        showError('Failed to generate PDF. Please try again.');
+        restore();
+      }
+    }, function(message) {
+      showError(message);
+      restore();
     });
   });
 });
