@@ -4,20 +4,30 @@
 **NotebookLM Citation Mapper**
 
 ## Short Description (132 characters max)
-Copy NotebookLM chat text with citation numbers preserved and automatically mapped to source filenames.
+Export NotebookLM chats as Markdown with real footnotes, carrying the quoted source passage behind every citation.
 
 ## Detailed Description
 
 **Never lose track of your sources again when copying from Google NotebookLM!**
 
-NotebookLM Citation Mapper helps you preserve citation references when copying text from your NotebookLM conversations. Instead of losing all citation numbers, this extension automatically extracts them and appends a complete source mapping.
+NotebookLM Citation Mapper helps you preserve citation references when copying text from your NotebookLM conversations. Instead of losing all citation numbers, this extension automatically extracts them, pulls in the source passage behind each one, and hands you a Markdown document with working footnotes.
 
 ### ✨ Key Features
 
-**📄 Copy Text with Citations**
-- Extract full chat responses with citation numbers preserved as [1], [2], etc.
-- Automatically appends a "Sources" section with complete mappings
+**📄 Markdown Export with Real Footnotes**
+- Extract full chat responses with citations preserved as [^1] footnote references
+- Headings, lists, blockquotes, and bold/italic survive the copy
+- Collects every source into one block at the end
 - Perfect for research papers, reports, and documentation
+
+**💬 Source Snippets**
+- Pulls the quoted passage NotebookLM shows when you hover a citation
+- Choose how much appears: filenames only, footnotes, or the full quote inline
+- Read straight from the page, with no network requests
+
+**✅ Choose What to Export**
+- Tick the questions you want; all are included by default
+- Citation numbers renumber consecutively across whatever you pick
 
 **🔍 Smart Citation Mapping**
 - Automatically scans NotebookLM pages for citation references
@@ -28,37 +38,55 @@ NotebookLM Citation Mapper helps you preserve citation references when copying t
 - Copy just the citation mappings if you prefer
 - Clean, formatted output ready to paste anywhere
 
+**📝 Rich Text and PDF**
+- Copy as HTML for pasting straight into a document
+- Or download the whole conversation as a PDF
+
 **🔄 Manual Rescan**
 - Refresh citation mappings on demand
 - Ensures you always have the latest source information
 
 ### 🎯 How It Works
 
-1. Open any notebook in Google NotebookLM
+1. Open any notebook in Google NotebookLM (notebook.google.com)
 2. The extension automatically scans for citations
 3. Click the extension icon to see all detected citations
-4. Click "Copy Text with Citations" to get your formatted text
+4. Click "Copy Text with Sources" to get your formatted Markdown
 
 ### 📊 Output Format
 
 Your copied text will look like this:
 
-```
-The research shows significant improvement [1]. Multiple studies confirm this finding [2][3].
+```markdown
+## Exchange 1
 
-─────────────────────
-Sources:
-[1] → Research_Paper_2024.pdf
-[2] → Study_Results.docx
-[3] → Analysis_Report.pdf
+**Question**
+
+> What does the research show?
+
+**Answer**
+
+The research shows significant improvement[^1]. Multiple studies confirm
+this finding[^2][^3].
+
+---
+
+## Sources
+
+[^1]: Research_Paper_2024.pdf
+> Subjects improved by a mean of 34% over the twelve week trial.
+
+[^2]: Study_Results.docx
+> The effect held across all three cohorts.
 ```
 
 ### 🔒 Privacy First
 
 - **No data collection**: Everything processes locally in your browser
-- **No external servers**: Your data never leaves your device
+- **No external servers**: Nothing is ever transmitted anywhere
+- **Stored on your device**: Settings, and a history of your last 100 copies, which you can clear from the settings page at any time
 - **Open source**: Full code available on GitHub
-- Read our complete privacy policy: [Link to GitHub privacy policy]
+- Read our complete privacy policy: https://github.com/thisbailiwick/notebookLM-citation/blob/main/PRIVACY_POLICY.md
 
 ### 💪 Perfect For
 
@@ -70,9 +98,10 @@ Sources:
 ### 🛠️ Technical Details
 
 - Built with Manifest V3 (latest Chrome extension standard)
-- Lightweight and fast
+- Works on both notebook.google.com and the older notebooklm.google.com
 - Works seamlessly with NotebookLM's interface
-- No impact on NotebookLM's performance
+- Reading source snippets takes a few seconds on a long notebook, since each
+  citation has to be revealed in turn
 
 ### 📝 Requirements
 
@@ -83,17 +112,18 @@ Sources:
 ### 🤝 Open Source
 
 This extension is open source and welcomes contributions:
-GitHub: https://github.com/nicremo/notebookLM-citation
+GitHub: https://github.com/thisbailiwick/notebookLM-citation
 
 ### 💬 Support
 
 Having issues? Need a feature?
-- Report bugs on GitHub: https://github.com/nicremo/notebookLM-citation/issues
+- Report bugs on GitHub: https://github.com/thisbailiwick/notebookLM-citation/issues
 - View source code and documentation
 
 ### ⭐ Credits
 
-Created by the NotebookLM community to make research and citation management easier.
+Created by the NotebookLM community to make research and citation management
+easier. This is a fork of nicremo/notebookLM-citation.
 
 ---
 
@@ -138,17 +168,19 @@ English (Deutsch optional)
 5. **Settings/options** (if any)
 
 ## Version
-1.0.0
+1.3.0
 
 ## What's New in This Version
-Initial release with core features:
-- Copy chat text with preserved citations
-- Automatic citation mapping
-- Citation legend export
-- Manual rescan functionality
+- Works on Google's new notebook.google.com address
+- Markdown export with real footnotes ([^1] resolving to [^1]:)
+- Source snippets: the quoted passage behind each citation, in four styles
+- Pick which questions to export
+- Citation numbers renumber consecutively instead of restarting each answer
+- Collapsed citation lists now expand, so hidden citations stop being dropped
+- Fixed duplicated text when copying
 
 ## Developer Information
 - **Developer Name:** Your Name/Organization
-- **Website:** https://github.com/nicremo/notebookLM-citation
+- **Website:** https://github.com/thisbailiwick/notebookLM-citation
 - **Email:** Your support email
-- **Privacy Policy URL:** https://github.com/nicremo/notebookLM-citation/blob/main/PRIVACY_POLICY.md
+- **Privacy Policy URL:** https://github.com/thisbailiwick/notebookLM-citation/blob/main/PRIVACY_POLICY.md

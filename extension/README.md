@@ -17,12 +17,10 @@ When you copy text from NotebookLM's chat interface, the citation numbers (like 
 - **Consecutive Numbering**: Citation numbers run consecutively across the export, not restarting at 1 in every answer
 - **Single Sources Block**: All sources collected at the end of the export rather than repeated after every answer
 - **Copy with Sources**: Copy chat text with citation sources appended at the bottom
-- **Draggable Legend Window**: Shows a real-time citation map directly on the NotebookLM page
 - **Smart Citation Expansion**: Clicks the "more" control on collapsed citation lists so hidden citations are captured
 - **Select What to Export**: Choose which exchanges to include; all are selected by default
 - **Popup Interface**: Quick access to citation mappings and controls
 - **Auto-Rescan**: Monitors page changes and updates mappings automatically
-- **Customizable Formatting**: Configure how citations and sources appear in copied text
 - **Export/Import**: Save and restore citation mappings
 - **Statistics & History**: Track your citation usage and copy history
 - **Theme Support**: Light, dark, and auto themes available
@@ -121,40 +119,42 @@ NotebookLM shows the quoted source passage when you hover a citation number. Tha
 text is already in the page, so the extension can read it without any network
 request. Pick how it appears using **Source snippets in exports** in the popup:
 
-| Option | Body text | Sources block |
+| Option | Body text (Markdown) | Sources block |
 | --- | --- | --- |
-| Citation numbers only | `[1]` | filename only |
-| Footnotes at the end | `[1]` | filename + full snippet |
-| Full snippet inline | `[1: file — "…"]` | none |
-| Short inline + footnotes | `[1: "…"]` | filename + full snippet |
+| Citation numbers only | `[^1]` | filename only |
+| Footnotes at the end | `[^1]` | filename + full snippet |
+| Full snippet inline | `[1: *file* — "…"]` | none |
+| Short inline + footnotes | `[^1] ("…")` | filename + full snippet |
+
+"Full snippet inline" carries the whole passage in the body, so it has no
+footnote to point at and stays a plain bracket rather than a `[^1]` reference.
 
 The choice is remembered and applies to plain copy, rich text copy, and PDF
 export alike. Anything other than "Citation numbers only" has to reveal every
 citation on the page to read its snippet, which takes a few seconds on a long
 notebook; progress is shown in the popup while it runs.
 
-### Legend Window
-
-- A draggable window appears on the page showing the citation map
-- Click and drag to reposition it
-- Minimize/maximize using the controls
-- Resize by dragging the corners
-- Copy the entire mapping with one click
-
 ### Settings Page
 
 Access advanced features through the settings icon:
 
 - **Theme Settings**: Choose light, dark, or auto theme
-- **Auto-Features**: Configure auto-rescan and notifications
-- **Format Options**: Customize citation and source formatting
+- **Auto-Features**: Configure auto-expand, auto-rescan, and notifications
 - **Export/Import**: Save and restore your citation mappings
 - **History**: View your copy history
 - **Statistics**: See usage statistics and most referenced sources
 
+The **Format Options** on that page (citation style, source header, separator)
+are left over from the flat-text output and no longer do anything — the
+Markdown layout is fixed, and the snippet style is chosen in the popup instead.
+
 ## Privacy
 
-All citation processing happens locally in your browser. No data is sent to external servers. Your citation mappings and settings are stored locally using Chrome's storage API.
+All citation processing happens locally in your browser and no data is sent to
+external servers, but some of it is kept on your device: your copy history holds
+the full text of the last 100 copies, and your settings sync through your Google
+account. See [PRIVACY_POLICY.md](../PRIVACY_POLICY.md) for the details, and clear
+the history from the settings page whenever you want.
 
 ## Technical Details
 

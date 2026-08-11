@@ -142,6 +142,9 @@ The extension uses three main components:
 - **The service worker no longer throws on load.** It called
   `chrome.contextMenus` and `chrome.scripting` without either permission
   declared, so both were `undefined` and the error aborted the script.
+- **The privacy policy said the extension used no persistent storage.** It has
+  used `chrome.storage` for some time, keeping the full text of your last 100
+  copies. The policy now describes what is actually stored and where.
 
 ### New Features
 
@@ -152,8 +155,7 @@ The extension uses three main components:
 - **Real Markdown footnotes** — `[^1]` in the body resolving to `[^1]:`
   definitions.
 - **Four snippet styles**, chosen at export time and remembered: filenames only,
-  footnotes per answer, full snippet inline, or a short inline quote plus
-  footnotes.
+  footnotes, full snippet inline, or a short inline quote plus footnotes.
 - **Exchange selection.** Pick which questions to include; all by default.
 - **A single sources block** at the end of the export, instead of one after
   every answer.
@@ -167,6 +169,21 @@ The extension uses three main components:
 - Chat text extraction uses heuristics and may occasionally miss content
 - Reading source snippets requires revealing each citation in turn, which takes
   a few seconds on a long notebook (about 20 seconds for 84 citations)
+- A source cited from several answers is written out once per citation number.
+  Markdown allows only one definition per footnote label, so grouping the
+  numbers under a single definition would leave the rest unresolvable
+- The settings page still shows **Format Options** (citation style, source
+  header, separator) from the old flat-text output. They save but no longer
+  affect anything; the Markdown layout is fixed and the snippet style is chosen
+  in the popup
+
+## Privacy
+
+Everything is processed locally and nothing is transmitted anywhere, but the
+extension does keep data on your device: a history of your last 100 copies,
+including their full text, plus usage statistics. Your settings sync through
+your Google account. Both the history and statistics can be cleared from the
+settings page. See [PRIVACY_POLICY.md](PRIVACY_POLICY.md).
 
 ## Contributing
 
