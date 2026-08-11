@@ -1,5 +1,8 @@
 # NotebookLM Citation Mapper
 
+> Fork of [nicremo/notebookLM-citation](https://github.com/nicremo/notebookLM-citation).
+> The full list of changes is in the [root README](../README.md#what-this-fork-changes).
+
 A Chrome extension that preserves citation references when copying chat text from Google NotebookLM.
 
 ## Overview
