@@ -9,6 +9,8 @@ When you copy text from NotebookLM's chat interface, the citation numbers (like 
 ## Features
 
 - **Automatic Citation Mapping**: Automatically detects and maps citation numbers to source document names
+- **Source Snippets**: Pulls the quoted passage behind each citation into your copies and exports
+- **Per-Answer Numbering**: Citation numbers restart at 1 in every answer, so each answer keeps its own source list
 - **Copy with Sources**: Copy chat text with citation sources appended at the bottom
 - **Draggable Legend Window**: Shows a real-time citation map directly on the NotebookLM page
 - **Smart Citation Expansion**: Automatically expands hidden citation lists to capture all sources
@@ -44,6 +46,24 @@ When you copy text from NotebookLM's chat interface, the citation numbers (like 
 2. Open a notebook and start a chat
 3. Click the extension icon to see current citation mappings
 4. Copy text from the chat - citations will be automatically included
+
+### Source Snippets
+
+NotebookLM shows the quoted source passage when you hover a citation number. That
+text is already in the page, so the extension can read it without any network
+request. Pick how it appears using **Source snippets in exports** in the popup:
+
+| Option | Body text | Sources block |
+| --- | --- | --- |
+| Citation numbers only | `[1]` | filename only |
+| Footnotes after each answer | `[1]` | filename + full snippet |
+| Full snippet inline | `[1: file — "…"]` | none |
+| Short inline + footnotes | `[1: "…"]` | filename + full snippet |
+
+The choice is remembered and applies to plain copy, rich text copy, and PDF
+export alike. Anything other than "Citation numbers only" has to reveal every
+citation on the page to read its snippet, which takes a few seconds on a long
+notebook; progress is shown in the popup while it runs.
 
 ### Legend Window
 

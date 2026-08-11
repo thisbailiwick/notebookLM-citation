@@ -163,6 +163,37 @@
       padding: 20px;
       color: var(--text-secondary);
     }
+    .option {
+      margin-bottom: 12px;
+    }
+    .option label {
+      display: block;
+      font-size: 12px;
+      font-weight: bold;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+    }
+    .option select {
+      width: 100%;
+      padding: 7px 8px;
+      font-size: 13px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+    }
+    .option .hint {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+      line-height: 1.4;
+    }
+    .progress {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-top: 8px;
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -178,6 +209,16 @@
   <div class="mappings" id="mappings-container">
     <div class="loading">Loading citations...</div>
   </div>
+  <div class="option">
+    <label for="citation-style">Source snippets in exports</label>
+    <select id="citation-style">
+      <option value="none">Citation numbers only</option>
+      <option value="footnotes">Footnotes after each answer</option>
+      <option value="inline">Full snippet inline</option>
+      <option value="inline-short">Short inline + footnotes</option>
+    </select>
+    <div class="hint" id="citation-style-hint"></div>
+  </div>
   <div class="buttons">
     <button class="success" id="copy-chat-btn">📄 Copy Text with Sources</button>
     <button class="primary" id="copy-rich-btn">📝 Copy Rich Text</button>
@@ -185,6 +226,7 @@
     <button class="primary" id="copy-btn">📋 Copy Citation Mappings</button>
     <button class="secondary" id="rescan-btn">🔄 Rescan Page</button>
   </div>
+  <div class="progress" id="progress-text" aria-live="polite"></div>
   <div class="error" id="error-message" style="display: none;" role="alert" aria-live="assertive"></div>
   <script src="lib/jspdf.umd.min.js"></script>
   <script src="popup.js"></script>
