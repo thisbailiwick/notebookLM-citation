@@ -452,33 +452,37 @@
     return citation.filename + ' ' + snippet;
   }
 
-  // The same passage usually gets cited from several answers. Each occurrence
-  // keeps its own number in the body, but the sources block lists the passage
-  // once, carrying every number that points at it. Insertion order means the
-  // first (lowest) number leads.
-  function dedupeSources(answers) {
+  // Groups the same passage under every number that cites it. Only for the
+  // formats with no footnote machinery to satisfy - see sourcesBlock.
+  function dedupeSources(citations) {
     const byKey = new Map();
-    answers.forEach(answer => {
-      answer.citations.forEach(c => {
-        const existing = byKey.get(sourceKey(c));
-        if (existing) {
-          if (existing.numbers.indexOf(c.citation) === -1) existing.numbers.push(c.citation);
-          return;
-        }
-        byKey.set(sourceKey(c), {
-          filename: c.filename,
-          snippet: c.snippet,
-          numbers: [c.citation]
-        });
+    citations.forEach(c => {
+      const existing = byKey.get(sourceKey(c));
+      if (existing) {
+        if (existing.numbers.indexOf(c.citation) === -1) existing.numbers.push(c.citation);
+        return;
+      }
+      byKey.set(sourceKey(c), {
+        filename: c.filename,
+        snippet: c.snippet,
+        numbers: [c.citation]
       });
     });
     return Array.from(byKey.values());
   }
 
-  function sourcesBlock(sources, style, flavor) {
+  function allCitations(answers) {
+    const flat = [];
+    answers.forEach(answer => answer.citations.forEach(c => flat.push(c)));
+    return flat.sort((a, b) => parseInt(a.citation, 10) - parseInt(b.citation, 10));
+  }
+
+  function sourcesBlock(citations, style, flavor) {
+    // Plain text has no footnote linking to preserve, so the same passage
+    // cited several times is written once under all of its numbers.
     if (flavor !== 'markdown') {
       const lines = ['--- Sources ---'];
-      sources.forEach(s => {
+      dedupeSources(citations).forEach(s => {
         lines.push(`[${s.numbers.join('] [')}] ${s.filename}`);
         if (footnoteHasSnippet(style) && s.snippet) {
           lines.push(indentLines(`"${s.snippet}"`, '    '));
@@ -487,25 +491,18 @@
       return lines.join('\n');
     }
 
-    // Markdown ties one label to one definition, so only the first number can
-    // be a real footnote. The rest are listed beside the source to show the
-    // grouping, and each gets a one-line stub at the end of the block so no
-    // reference in the body is left dangling.
-    const blocks = [];
-    const stubs = [];
-    sources.forEach(s => {
-      const first = s.numbers[0];
-      const rest = s.numbers.slice(1);
-      const also = rest.length ? ` — also ${rest.map(n => `[^${n}]`).join(', ')}` : '';
-      let block = `[^${first}]: ${s.filename}${also}`;
-      if (footnoteHasSnippet(style) && s.snippet) {
-        block += '\n' + indentLines(s.snippet, '> ');
+    // Markdown gets one full definition per number, repeating the passage
+    // where a source is cited more than once. Grouping numbers under a single
+    // definition looks tidier but leaves the other labels undefined, and an
+    // editor that resolves footnotes - Bear, for one - then has nothing to
+    // jump to. A definition per label is what actually works.
+    return citations.map(c => {
+      let block = `[^${c.citation}]: ${c.filename}`;
+      if (footnoteHasSnippet(style) && c.snippet) {
+        block += '\n' + indentLines(c.snippet, '> ');
       }
-      blocks.push(block);
-      rest.forEach(n => stubs.push(`[^${n}]: See [^${first}].`));
-    });
-    if (stubs.length) blocks.push(stubs.join('\n'));
-    return blocks.join('\n\n');
+      return block;
+    }).join('\n\n');
   }
 
   function buildDocument(answers, style, flavor, meta) {
@@ -541,13 +538,13 @@
     // sources repeat across answers, and only a document-wide list can collect
     // every number that points at a passage next to a single copy of it.
     if (needsFootnotes(style)) {
-      const sources = dedupeSources(answers);
-      if (sources.length) {
+      const citations = allCitations(answers);
+      if (citations.length) {
         if (flavor === 'markdown') {
           parts.push('---');
           parts.push('## Sources');
         }
-        parts.push(sourcesBlock(sources, style, flavor));
+        parts.push(sourcesBlock(citations, style, flavor));
       }
     }
 

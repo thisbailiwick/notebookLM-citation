@@ -15,7 +15,7 @@ When you copy text from NotebookLM's chat interface, the citation numbers (like 
 - **Markdown Output**: Copies as Markdown, preserving headings, lists, and bold/italic from the page
 - **Source Snippets**: Pulls the quoted passage behind each citation into your copies and exports
 - **Consecutive Numbering**: Citation numbers run consecutively across the export, not restarting at 1 in every answer
-- **Deduplicated Sources**: One sources block per export, each passage listed once with every number citing it
+- **Single Sources Block**: All sources collected at the end of the export rather than repeated after every answer
 - **Copy with Sources**: Copy chat text with citation sources appended at the bottom
 - **Draggable Legend Window**: Shows a real-time citation map directly on the NotebookLM page
 - **Smart Citation Expansion**: Clicks the "more" control on collapsed citation lists so hidden citations are captured
@@ -84,12 +84,12 @@ Jeff Foster presents nonduality as **an ordinary, ever-present reality**[^1].
 
 ## Sources
 
-[^1]: The Deepest Acceptance - Jeff Foster.epub — also [^18], [^43]
+[^1]: The Deepest Acceptance - Jeff Foster.epub
 > The spiritual awakening I talk about in this book is not about
 > protecting yourself more.
 
-[^18]: See [^1].
-[^43]: See [^1].
+[^2]: Falling in Love with Where You Are.epub
+> You are the ocean, not just the wave.
 ```
 
 Citations are real Markdown footnotes: `[^1]` in the body resolves to a
@@ -98,11 +98,12 @@ document, citation numbers are renumbered consecutively over whatever you
 export — NotebookLM restarts them at 1 in every answer, so the second answer
 picks up where the first left off rather than colliding with it.
 
-Sources are gathered into one block at the end of the export. Every occurrence
-in the body keeps its own number, but a passage cited from several answers is
-written out once, carrying all of its numbers. Since Markdown allows only one
-definition per label, the first number holds the source and the rest get a
-one-line stub pointing at it, so every reference in the body still resolves.
+Sources are gathered into one block at the end of the export, and every number
+gets its own definition — a passage cited from three answers is written out
+three times. Grouping those numbers under a single definition reads better but
+leaves the other labels undefined, and an editor that resolves footnotes then
+has nothing to jump to. Plain text export, which has no footnote linking to
+preserve, does group them.
 
 PDF export uses a plain-text version of the same document, since Markdown
 syntax would only be literal noise on the page.
