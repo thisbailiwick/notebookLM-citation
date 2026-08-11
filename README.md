@@ -26,7 +26,8 @@ A Chrome extension that automatically maps citation numbers to source filenames 
 
 ## Usage
 
-1. Navigate to [notebooklm.google.com](https://notebooklm.google.com)
+1. Navigate to [notebook.google.com](https://notebook.google.com) (the old
+   notebooklm.google.com address still works and redirects here)
 
 2. The extension will automatically:
    - Scan for citations in the current notebook

@@ -1,5 +1,10 @@
 // popup.js - Popup script for NotebookLM Citation Mapper
 
+// Hosts NotebookLM is served from. Google moved the app from
+// notebooklm.google.com to notebook.google.com; the old host now redirects,
+// but keep it listed so older links/tabs still work.
+const NOTEBOOKLM_HOSTS = ['notebook.google.com', 'notebooklm.google.com'];
+
 document.addEventListener('DOMContentLoaded', function() {
   const statusText = document.getElementById('status-text');
   const mappingsContainer = document.getElementById('mappings-container');
@@ -155,7 +160,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let isNotebookLM = false;
     try {
       const url = new URL(currentTab.url);
-      isNotebookLM = url.hostname === 'notebooklm.google.com';
+      isNotebookLM = NOTEBOOKLM_HOSTS.includes(url.hostname);
     } catch (e) {
       isNotebookLM = false;
     }
@@ -163,7 +168,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (!isNotebookLM) {
       statusText.textContent = 'Please open Google NotebookLM';
       statusText.style.color = '#d93025';
-      mappingsContainer.innerHTML = '<div class="loading">This extension only works on notebooklm.google.com</div>';
+      mappingsContainer.innerHTML = '<div class="loading">This extension only works on notebook.google.com</div>';
       copyBtn.disabled = true;
       copyChatBtn.disabled = true;
       copyRichBtn.disabled = true;
