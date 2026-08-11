@@ -109,7 +109,16 @@
 
     // Extract text from paragraphs
     // Based on debug: <div class="paragraph normal ng-star-inserted">
-    const paragraphs = clone.querySelectorAll('.paragraph.normal, .paragraph, div[class*="text"], p');
+    const matches = Array.from(
+      clone.querySelectorAll('.paragraph.normal, .paragraph, div[class*="text"], p')
+    );
+
+    // The selectors overlap: div[class*="text"] also matches the
+    // .message-text-content wrappers that hold the .paragraph elements, so a
+    // naive pass emits every paragraph twice. Keep only the innermost matches.
+    const paragraphs = matches.filter(
+      el => !matches.some(other => other !== el && other.contains(el))
+    );
 
     let text = '';
 
