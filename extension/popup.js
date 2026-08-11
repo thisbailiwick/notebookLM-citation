@@ -25,8 +25,8 @@ document.addEventListener('DOMContentLoaded', function() {
   // the page to read its source text out of the tooltip overlay, which is why
   // the hint warns about it.
   const STYLE_HINTS = {
-    'none': 'Fastest. Sources are listed by filename after each answer.',
-    'footnotes': 'Full snippet listed once per citation, after each answer.',
+    'none': 'Fastest. Sources are listed by filename at the end.',
+    'footnotes': 'Full snippet listed once per source, in one block at the end.',
     'inline': 'Full snippet spliced in at every citation. Longest output.',
     'inline-short': 'Short quote at each citation, full snippet in the footnotes.'
   };
@@ -543,8 +543,31 @@ document.addEventListener('DOMContentLoaded', function() {
       .replace(/>/g, '&gt;');
   }
 
-  // Generate Rich HTML per answer, so each answer keeps its own citation
-  // numbering instead of being flattened into one page-wide list.
+  // Same passage, same file means the same source. Mirrors sourceKey in
+  // content.js so rich text groups its sources exactly like the markdown does.
+  function sourceKey(citation) {
+    return citation.filename + ' ' + (citation.snippet || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function dedupeSources(answers) {
+    const byKey = new Map();
+    (answers || []).forEach(answer => {
+      (answer.citations || []).forEach(c => {
+        const existing = byKey.get(sourceKey(c));
+        if (existing) {
+          if (existing.numbers.indexOf(c.citation) === -1) existing.numbers.push(c.citation);
+          return;
+        }
+        byKey.set(sourceKey(c), {
+          filename: c.filename, snippet: c.snippet, numbers: [c.citation]
+        });
+      });
+    });
+    return Array.from(byKey.values());
+  }
+
+  // One sources list for the whole export, each entry carrying every number
+  // that refers to it, so a passage cited from four answers appears once.
   function generateRichHTML(response) {
     const style = response.style || 'none';
     const withSnippets = style === 'footnotes' || style === 'inline-short';
@@ -562,20 +585,23 @@ document.addEventListener('DOMContentLoaded', function() {
         html += `<p style="margin: 0 0 12px;">${body}</p>`;
       }
 
-      if (style !== 'inline' && answer.citations && answer.citations.length) {
-        html += '<hr style="border: none; border-top: 1px solid #ccc; margin: 12px 0;">';
-        html += '<p style="font-weight: bold; margin-bottom: 8px;">Sources:</p>';
-        html += '<ul style="margin: 0 0 16px; padding-left: 20px;">';
-        answer.citations.forEach(c => {
-          html += `<li><strong style="color: #4285f4;">[${c.citation}]</strong> ${escapeHTML(c.filename)}`;
-          if (withSnippets && c.snippet) {
-            html += `<div style="color: #555; font-style: italic; margin: 4px 0 8px;">“${escapeHTML(c.snippet)}”</div>`;
-          }
-          html += '</li>';
-        });
-        html += '</ul>';
-      }
     });
+
+    const sources = style === 'inline' ? [] : dedupeSources(response.answers);
+    if (sources.length) {
+      html += '<hr style="border: none; border-top: 1px solid #ccc; margin: 16px 0;">';
+      html += '<p style="font-weight: bold; margin-bottom: 8px;">Sources:</p>';
+      html += '<ul style="margin: 0; padding-left: 20px;">';
+      sources.forEach(s => {
+        const numbers = s.numbers.map(n => `[${n}]`).join(' ');
+        html += `<li style="margin-bottom: 8px;"><strong style="color: #4285f4;">${numbers}</strong> ${escapeHTML(s.filename)}`;
+        if (withSnippets && s.snippet) {
+          html += `<div style="color: #555; font-style: italic; margin: 4px 0 0;">“${escapeHTML(s.snippet)}”</div>`;
+        }
+        html += '</li>';
+      });
+      html += '</ul>';
+    }
 
     return html + '</div>';
   }
