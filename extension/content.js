@@ -8,7 +8,7 @@
   const MESSAGE_SELECTOR = 'chat-message';
   const MESSAGE_FALLBACK = '.message-text-content';
   const MARKER_SELECTOR = 'button.citation-marker, .citation-marker';
-  const PARAGRAPH_SELECTOR = '.paragraph.normal, .paragraph, div[class*="text"], p';
+  const PARAGRAPH_SELECTOR = '.paragraph.normal, .paragraph, div[class*="text"], p, hr';
 
   // Hovering a citation marker renders its source snippet into the shared CDK
   // overlay. Nothing is fetched - the text is already client side - so this is
@@ -203,25 +203,86 @@
     return text.length <= limit ? text : text.slice(0, limit).trimEnd() + '…';
   }
 
-  function renderMarker(number, info, style) {
+  function renderMarker(number, info, style, flavor) {
     if (!info || style === 'none' || style === 'footnotes') return `[${number}]`;
-    if (style === 'inline') return `[${number}: ${info.filename} — "${info.snippet}"]`;
+    const name = flavor === 'markdown' ? `*${info.filename}*` : info.filename;
+    if (style === 'inline') return `[${number}: ${name} — "${info.snippet}"]`;
     if (style === 'inline-short') {
       return `[${number}: "${truncate(info.snippet, INLINE_SNIPPET_CHARS)}"]`;
     }
     return `[${number}]`;
   }
 
-  function tidy(text) {
-    return text
-      .replace(/\n{3,}/g, '\n\n')
-      .replace(/[ \t]+/g, ' ')
-      .replace(/\s+\[/g, ' [')
-      .replace(/\]\s+/g, '] ')
-      .trim();
+  // Inline formatting the page carries as real elements: <b>/<i> inside answer
+  // paragraphs. Emphasis is only re-emitted for the markdown flavor.
+  const EMPHASIS = { B: '**', STRONG: '**', I: '*', EM: '*', CODE: '`' };
+
+  function inlineText(node, flavor) {
+    if (node.nodeType === 3) return node.textContent;
+    if (node.nodeType !== 1) return '';
+    let inner = '';
+    node.childNodes.forEach(child => { inner += inlineText(child, flavor); });
+    if (flavor !== 'markdown') return inner;
+    const wrap = EMPHASIS[node.tagName];
+    if (!wrap || !inner.trim()) return inner;
+    // Keep the surrounding spaces outside the markers, or the emphasis does
+    // not render ("** bold **" is literal text in most parsers).
+    const lead = inner.match(/^\s*/)[0];
+    const tail = inner.match(/\s*$/)[0];
+    return lead + wrap + inner.trim() + wrap + tail;
   }
 
-  function messageText(message, style) {
+  function listDepth(el) {
+    let depth = 0;
+    let node = el.parentElement;
+    while (node) {
+      if (node.tagName === 'UL' || node.tagName === 'OL') depth++;
+      node = node.parentElement;
+    }
+    return depth;
+  }
+
+  // One page block -> one markdown block. Paragraph roles are carried in the
+  // class list (heading3, list-item, blockquote), not in the tag name.
+  function blockFor(el, flavor) {
+    if (el.tagName === 'HR') return { kind: 'rule', text: flavor === 'markdown' ? '---' : '─────' };
+
+    const text = inlineText(el, flavor).replace(/[ \t]+/g, ' ').trim();
+    if (!text) return null;
+    if (flavor !== 'markdown') return { kind: 'text', text: text };
+
+    const cls = el.getAttribute('class') || '';
+    const heading = /heading(\d)/.exec(cls);
+    if (heading) {
+      // Page headings sit under the "## Exchange N" level, so never shallower
+      // than h3.
+      const level = Math.min(6, Math.max(3, parseInt(heading[1], 10)));
+      return { kind: 'heading', text: '#'.repeat(level) + ' ' + text };
+    }
+    if (/\blist-item\b/.test(cls)) {
+      const indent = '  '.repeat(Math.max(0, listDepth(el) - 1));
+      const bullet = el.closest('ol') ? '1. ' : '- ';
+      return { kind: 'list', text: indent + bullet + text };
+    }
+    if (/\bblockquote\b/.test(cls)) return { kind: 'quote', text: '> ' + text };
+    return { kind: 'text', text: text };
+  }
+
+  function joinBlocks(blocks) {
+    let out = '';
+    blocks.forEach((block, i) => {
+      if (i > 0) {
+        const previous = blocks[i - 1];
+        // Consecutive list items belong to one list, so keep them tight.
+        const tight = block.kind === 'list' && previous.kind === 'list';
+        out += tight ? '\n' : '\n\n';
+      }
+      out += block.text;
+    });
+    return out.trim();
+  }
+
+  function messageText(message, style, flavor) {
     const clone = message.element.cloneNode(true);
     clone.querySelectorAll(NOISE_SELECTOR).forEach(el => el.remove());
 
@@ -229,20 +290,17 @@
       const number = citationNumber(marker);
       if (!number) return;
       const info = message.snippets.get(number) || null;
-      marker.replaceWith(document.createTextNode(renderMarker(number, info, style)));
+      marker.replaceWith(document.createTextNode(renderMarker(number, info, style, flavor)));
     });
 
     const paragraphs = paragraphsOf(clone);
-    let text = '';
-    if (paragraphs.length) {
-      paragraphs.forEach(p => {
-        const value = p.textContent.trim();
-        if (value) text += value + '\n\n';
-      });
-    } else {
-      text = clone.textContent;
+    if (!paragraphs.length) {
+      return clone.textContent.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
     }
-    return tidy(text);
+    const blocks = paragraphs.map(p => blockFor(p, flavor)).filter(Boolean);
+    return joinBlocks(blocks)
+      .replace(/ +\[/g, ' [')
+      .replace(/\] +/g, '] ');
   }
 
   function citationsOf(message) {
@@ -265,24 +323,66 @@
   const needsFootnotes = style => style !== 'inline';
   const footnoteHasSnippet = style => style === 'footnotes' || style === 'inline-short';
 
-  function footnoteBlock(citations, style) {
-    const lines = ['--- Sources ---'];
+  function indentLines(text, prefix) {
+    return text.split('\n').map(line => prefix + line).join('\n');
+  }
+
+  function footnoteBlock(citations, style, flavor) {
+    if (flavor !== 'markdown') {
+      const lines = ['--- Sources ---'];
+      citations.forEach(c => {
+        lines.push(`[${c.citation}] ${c.filename}`);
+        if (footnoteHasSnippet(style) && c.snippet) {
+          lines.push(indentLines(`"${c.snippet}"`, '    '));
+        }
+      });
+      return lines.join('\n');
+    }
+
+    const lines = ['**Sources**', ''];
     citations.forEach(c => {
-      lines.push(`[${c.citation}] ${c.filename}`);
-      if (footnoteHasSnippet(style) && c.snippet) lines.push(`    "${c.snippet}"`);
+      lines.push(`- **[${c.citation}]** ${c.filename}`);
+      // Snippets are quoted rather than indented so they survive alongside the
+      // list item without being read as a code block.
+      if (footnoteHasSnippet(style) && c.snippet) {
+        lines.push(indentLines(c.snippet, '  > '));
+      }
     });
     return lines.join('\n');
   }
 
-  function buildPlainText(answers, style) {
+  function buildDocument(answers, style, flavor, meta) {
     const parts = [];
+    let exchange = 0;
+
+    if (flavor === 'markdown') {
+      parts.push('# NotebookLM Export');
+      const bits = [`Exported ${new Date().toISOString().slice(0, 10)}`];
+      if (meta.exchanges) bits.push(`${meta.exchanges} exchange${meta.exchanges > 1 ? 's' : ''}`);
+      if (meta.citations) bits.push(`${meta.citations} citation${meta.citations > 1 ? 's' : ''}`);
+      parts.push(`*${bits.join(' · ')}*`);
+    }
+
     answers.forEach(answer => {
       if (!answer.text) return;
-      parts.push(answer.role === 'question' ? `Q: ${answer.text}` : answer.text);
+
+      if (flavor !== 'markdown') {
+        parts.push(answer.role === 'question' ? `Q: ${answer.text}` : answer.text);
+      } else if (answer.role === 'question') {
+        parts.push('---');
+        parts.push(`## Exchange ${++exchange}`);
+        parts.push('**Question**');
+        parts.push(indentLines(answer.text, '> '));
+      } else {
+        parts.push('**Answer**');
+        parts.push(answer.text);
+      }
+
       if (needsFootnotes(style) && answer.citations.length) {
-        parts.push(footnoteBlock(answer.citations, style));
+        parts.push(footnoteBlock(answer.citations, style, flavor));
       }
     });
+
     return parts.join('\n\n');
   }
 
@@ -318,16 +418,28 @@
     let harvest = { total: 0, missing: 0 };
     if (needsSnippets(chosen)) harvest = await harvestSnippets(messages);
 
+    // Both flavors are built from one harvest: markdown for copy/export, plain
+    // for the PDF, where markdown syntax would just be literal noise.
     const answers = messages
       .map(message => ({
         role: message.role,
-        text: messageText(message, chosen),
+        text: messageText(message, chosen, 'markdown'),
+        plain: messageText(message, chosen, 'plain'),
         citations: citationsOf(message)
       }))
       .filter(answer => answer.text);
 
+    const meta = {
+      exchanges: answers.filter(a => a.role === 'question').length,
+      citations: answers.reduce((sum, a) => sum + a.citations.length, 0)
+    };
+    const plainAnswers = answers.map(a => ({
+      role: a.role, text: a.plain, citations: a.citations
+    }));
+
     return {
-      chatText: buildPlainText(answers, chosen),
+      chatText: buildDocument(answers, chosen, 'markdown', meta),
+      plainText: buildDocument(plainAnswers, chosen, 'plain', meta),
       answers: answers,
       style: chosen,
       stats: {

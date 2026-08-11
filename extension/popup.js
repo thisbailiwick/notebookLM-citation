@@ -482,7 +482,9 @@ document.addEventListener('DOMContentLoaded', function() {
     let html = '<div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6;">';
 
     (response.answers || []).forEach(answer => {
-      let body = escapeHTML(answer.text)
+      // The plain flavor, not the markdown one - "**bold**" would render as
+      // literal asterisks once this is pasted as HTML.
+      let body = escapeHTML(answer.plain || answer.text)
         .replace(/\[(\d+)\]/g, '<strong style="color: #4285f4;">[$1]</strong>')
         .replace(/\n/g, '<br>');
       if (answer.role === 'question') {
@@ -589,7 +591,8 @@ document.addEventListener('DOMContentLoaded', function() {
         const maxWidth = pageWidth - (margin * 2);
         const lineHeight = 6;
 
-        const lines = doc.splitTextToSize(response.chatText, maxWidth);
+        // Plain flavor: markdown syntax would be literal noise in a PDF.
+        const lines = doc.splitTextToSize(response.plainText || response.chatText, maxWidth);
         let yPosition = 40;
 
         lines.forEach(line => {
@@ -605,7 +608,7 @@ document.addEventListener('DOMContentLoaded', function() {
         doc.save(`notebooklm-export-${timestamp}.pdf`);
 
         const citations = flattenCitations(response);
-        saveToHistory(response.chatText, citations, 'pdf');
+        saveToHistory(response.plainText || response.chatText, citations, 'pdf');
         updateStatistics(citations);
 
         exportPdfBtn.textContent = '✓ Downloaded!';

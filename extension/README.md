@@ -9,6 +9,7 @@ When you copy text from NotebookLM's chat interface, the citation numbers (like 
 ## Features
 
 - **Automatic Citation Mapping**: Automatically detects and maps citation numbers to source document names
+- **Markdown Output**: Copies as Markdown, preserving headings, lists, and bold/italic from the page
 - **Source Snippets**: Pulls the quoted passage behind each citation into your copies and exports
 - **Per-Answer Numbering**: Citation numbers restart at 1 in every answer, so each answer keeps its own source list
 - **Copy with Sources**: Copy chat text with citation sources appended at the bottom
@@ -46,6 +47,43 @@ When you copy text from NotebookLM's chat interface, the citation numbers (like 
 2. Open a notebook and start a chat
 3. Click the extension icon to see current citation mappings
 4. Copy text from the chat - citations will be automatically included
+
+### Markdown Output
+
+Copied text is Markdown. The page's own structure is preserved rather than
+flattened: headings stay headings, bulleted lists stay lists, and **bold** and
+*italic* runs survive. Each exchange is labelled so it is clear what is what:
+
+```markdown
+# NotebookLM Export
+
+*Exported 2026-08-11 · 8 exchanges · 84 citations*
+
+---
+
+## Exchange 1
+
+**Question**
+
+> How does he deal with nonduality?
+
+**Answer**
+
+### How He Presents Nonduality
+
+Jeff Foster presents nonduality as **an ordinary, ever-present reality** [1].
+
+- **The Ocean and the Waves:** his foundational metaphor [4][5].
+
+**Sources**
+
+- **[1]** The Deepest Acceptance - Jeff Foster.epub
+  > The spiritual awakening I talk about in this book is not about
+  > protecting yourself more.
+```
+
+PDF export uses a plain-text version of the same document, since Markdown
+syntax would only be literal noise on the page.
 
 ### Source Snippets
 
