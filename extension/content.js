@@ -32,6 +32,8 @@
   const DISMISS_MS = 1200;
   const POLL_MS = 15;
   const INLINE_SNIPPET_CHARS = 120;
+  const EXPAND_MS = 2000;
+  const MAX_EXPAND_PASSES = 10;
 
   let isMapping = false;
   let currentMappings = [];
@@ -81,8 +83,71 @@
       element: el,
       role: roleOf(el),
       markers: markersByNumber(el),
-      snippets: new Map()
+      snippets: new Map(),
+      numbering: new Map()
     }));
+  }
+
+  // Group into question/answer exchanges so whole exchanges can be selected.
+  // Anything before the first question becomes exchange 0.
+  function collectExchanges(messages) {
+    const exchanges = [];
+    messages.forEach(message => {
+      if (message.role === 'question' || !exchanges.length) {
+        exchanges.push({ index: exchanges.length, question: null, messages: [] });
+      }
+      const current = exchanges[exchanges.length - 1];
+      if (message.role === 'question' && !current.question) current.question = message;
+      current.messages.push(message);
+    });
+    return exchanges;
+  }
+
+  function exchangePreview(exchange) {
+    const source = exchange.question || exchange.messages[0];
+    if (!source) return 'Untitled';
+    const text = source.element.textContent.replace(/\s+/g, ' ').trim();
+    return truncate(text, 90) || 'Untitled';
+  }
+
+  // -------------------------------------------------------------- expanding
+
+  // Citation lists longer than a few entries collapse behind a "more_horiz"
+  // icon button. It used to be a "..." text span, which is what the old
+  // auto-expand looked for - hence the citations missing from exports.
+  function expanderButtons(root) {
+    return Array.from(root.querySelectorAll(MARKER_SELECTOR)).filter(button => {
+      const icon = button.querySelector('mat-icon');
+      return icon && icon.textContent.trim() === 'more_horiz';
+    });
+  }
+
+  async function expandCitationLists(root) {
+    let clicked = 0;
+    for (let pass = 0; pass < MAX_EXPAND_PASSES; pass++) {
+      const buttons = expanderButtons(root);
+      if (!buttons.length) break;
+      const before = root.querySelectorAll(MARKER_SELECTOR).length;
+      buttons.forEach(button => button.click());
+      clicked += buttons.length;
+      // Expanding one list can reveal another, so loop until nothing grows.
+      const grew = await waitUntil(
+        () => root.querySelectorAll(MARKER_SELECTOR).length !== before, EXPAND_MS);
+      if (!grew) break;
+    }
+    return clicked;
+  }
+
+  function loadSettings() {
+    return new Promise(resolve => {
+      try {
+        chrome.storage.sync.get(['settings'], result => {
+          resolve((result && result.settings) || {});
+        });
+      } catch (e) {
+        resolve({});
+      }
+    });
   }
 
   // ---------------------------------------------------------------- tooltips
@@ -203,14 +268,24 @@
     return text.length <= limit ? text : text.slice(0, limit).trimEnd() + '…';
   }
 
+  // Markdown uses real footnote references ([^3]) so the marker links to its
+  // definition. The inline style carries the whole snippet in the body and has
+  // no definition to point at, so it stays a plain bracket.
   function renderMarker(number, info, style, flavor) {
-    if (!info || style === 'none' || style === 'footnotes') return `[${number}]`;
-    const name = flavor === 'markdown' ? `*${info.filename}*` : info.filename;
-    if (style === 'inline') return `[${number}: ${name} — "${info.snippet}"]`;
-    if (style === 'inline-short') {
-      return `[${number}: "${truncate(info.snippet, INLINE_SNIPPET_CHARS)}"]`;
+    const markdown = flavor === 'markdown';
+    const ref = markdown ? `[^${number}]` : `[${number}]`;
+
+    if (!info || style === 'none' || style === 'footnotes') return ref;
+
+    if (style === 'inline') {
+      const name = markdown ? `*${info.filename}*` : info.filename;
+      return `[${number}: ${name} — "${info.snippet}"]`;
     }
-    return `[${number}]`;
+    if (style === 'inline-short') {
+      const quote = truncate(info.snippet, INLINE_SNIPPET_CHARS);
+      return markdown ? `${ref} ("${quote}")` : `[${number}: "${quote}"]`;
+    }
+    return ref;
   }
 
   // Inline formatting the page carries as real elements: <b>/<i> inside answer
@@ -290,7 +365,8 @@
       const number = citationNumber(marker);
       if (!number) return;
       const info = message.snippets.get(number) || null;
-      marker.replaceWith(document.createTextNode(renderMarker(number, info, style, flavor)));
+      const display = message.numbering.get(number) || number;
+      marker.replaceWith(document.createTextNode(renderMarker(display, info, style, flavor)));
     });
 
     const paragraphs = paragraphsOf(clone);
@@ -303,18 +379,36 @@
       .replace(/\] +/g, '] ');
   }
 
-  function citationsOf(message) {
+  function localNumbers(message) {
     return Array.from(message.markers.keys())
-      .sort((a, b) => parseInt(a, 10) - parseInt(b, 10))
-      .map(number => {
-        const snap = message.snippets.get(number);
-        return {
-          citation: number,
-          filename: (snap && snap.filename) ||
-            citationFilename(message.markers.get(number)) || '(unknown source)',
-          snippet: snap ? snap.snippet : null
-        };
+      .sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
+  }
+
+  // Citation numbers restart at 1 in every answer. Since the export puts every
+  // answer in one document, renumber them consecutively across the selection so
+  // footnote references stay unique.
+  function assignGlobalNumbers(messages) {
+    let next = 0;
+    messages.forEach(message => {
+      message.numbering = new Map();
+      localNumbers(message).forEach(local => {
+        message.numbering.set(local, String(++next));
       });
+    });
+    return next;
+  }
+
+  function citationsOf(message) {
+    return localNumbers(message).map(number => {
+      const snap = message.snippets.get(number);
+      return {
+        citation: message.numbering.get(number) || number,
+        original: number,
+        filename: (snap && snap.filename) ||
+          citationFilename(message.markers.get(number)) || '(unknown source)',
+        snippet: snap ? snap.snippet : null
+      };
+    });
   }
 
   // ---------------------------------------------------------------- styles
@@ -339,13 +433,13 @@
       return lines.join('\n');
     }
 
-    const lines = ['**Sources**', ''];
+    // Real markdown footnote definitions, so [^3] in the body resolves here.
+    // Continuation lines are indented four spaces to stay inside the note.
+    const lines = [];
     citations.forEach(c => {
-      lines.push(`- **[${c.citation}]** ${c.filename}`);
-      // Snippets are quoted rather than indented so they survive alongside the
-      // list item without being read as a code block.
+      lines.push(`[^${c.citation}]: ${c.filename}`);
       if (footnoteHasSnippet(style) && c.snippet) {
-        lines.push(indentLines(c.snippet, '  > '));
+        lines.push(indentLines(c.snippet, '    > '));
       }
     });
     return lines.join('\n');
@@ -409,11 +503,23 @@
     }
   }
 
-  async function buildExport(style) {
+  async function buildExport(style, selection) {
     const chosen = ['none', 'footnotes', 'inline', 'inline-short'].includes(style)
       ? style : 'none';
-    const messages = collectMessages();
+
+    // Expand before collecting: revealing a collapsed list adds markers, and
+    // anything still hidden would silently drop out of the export.
+    const settings = await loadSettings();
+    if (settings.autoExpand !== false) await expandCitationLists(document);
+
+    const exchanges = collectExchanges(collectMessages());
+    const wanted = Array.isArray(selection) && selection.length
+      ? exchanges.filter(ex => selection.indexOf(ex.index) !== -1)
+      : exchanges;
+    const messages = wanted.reduce((all, ex) => all.concat(ex.messages), []);
     if (!messages.length) return null;
+
+    assignGlobalNumbers(messages);
 
     let harvest = { total: 0, missing: 0 };
     if (needsSnippets(chosen)) harvest = await harvestSnippets(messages);
@@ -469,13 +575,26 @@
     if (request.action === 'getMappings') {
       sendResponse({ mappings: currentMappings });
     } else if (request.action === 'rescan' || request.action === 'showMappings') {
-      mapCitations().then(mappings => sendResponse({ mappings: mappings }));
+      loadSettings()
+        .then(settings =>
+          settings.autoExpand !== false ? expandCitationLists(document) : null)
+        .then(() => mapCitations())
+        .then(mappings => sendResponse({ mappings: mappings }));
       return true;
     } else if (request.action === 'getChatText') {
-      buildExport(request.style)
+      buildExport(request.style, request.selection)
         .then(result => sendResponse(result || { chatText: null }))
         .catch(err => sendResponse({ chatText: null, error: err.message }));
       return true;
+    } else if (request.action === 'getOutline') {
+      const exchanges = collectExchanges(collectMessages());
+      sendResponse({
+        exchanges: exchanges.map(ex => ({
+          index: ex.index,
+          preview: exchangePreview(ex),
+          citations: ex.messages.reduce((sum, m) => sum + m.markers.size, 0)
+        }))
+      });
     }
   });
 

@@ -5,7 +5,9 @@ document.addEventListener('DOMContentLoaded', function() {
   const defaultSettings = {
     theme: 'light',
     autoRescan: true,
-    autoExpand: false,
+    // On by default: collapsed citation lists are otherwise dropped silently
+    // from exports.
+    autoExpand: true,
     showNotifications: true,
     citationStyle: 'brackets',
     sourceHeader: 'Sources:',

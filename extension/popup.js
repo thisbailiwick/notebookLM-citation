@@ -56,6 +56,68 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
+  // Exchange picker. Everything is selected by default; an empty selection is
+  // sent as "all" so the export never silently produces nothing.
+  function loadOutline() {
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+      if (!tabs || tabs.length === 0) return;
+      chrome.tabs.sendMessage(tabs[0].id, { action: 'getOutline' }, function (response) {
+        if (chrome.runtime.lastError || !response || !response.exchanges) return;
+        renderOutline(response.exchanges);
+      });
+    });
+  }
+
+  function renderOutline(exchanges) {
+    const list = document.getElementById('exchange-list');
+    const section = document.getElementById('exchange-section');
+    if (!list || !section) return;
+
+    list.textContent = '';
+    if (exchanges.length < 2) {
+      section.style.display = 'none';
+      return;
+    }
+    section.style.display = 'block';
+
+    exchanges.forEach(exchange => {
+      const row = document.createElement('label');
+      row.className = 'exchange-item';
+
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = true;
+      box.value = String(exchange.index);
+      box.className = 'exchange-checkbox';
+
+      const label = document.createElement('span');
+      const count = exchange.citations
+        ? ` (${exchange.citations} citation${exchange.citations > 1 ? 's' : ''})`
+        : '';
+      label.textContent = `${exchange.index + 1}. ${exchange.preview}${count}`;
+
+      row.appendChild(box);
+      row.appendChild(label);
+      list.appendChild(row);
+    });
+  }
+
+  function selectedExchanges() {
+    const boxes = Array.from(document.querySelectorAll('.exchange-checkbox'));
+    if (!boxes.length) return null;
+    const checked = boxes.filter(b => b.checked).map(b => parseInt(b.value, 10));
+    return checked.length === boxes.length ? null : checked;
+  }
+
+  function setAllExchanges(checked) {
+    document.querySelectorAll('.exchange-checkbox').forEach(b => { b.checked = checked; });
+  }
+
+  const selectAllBtn = document.getElementById('select-all-btn');
+  const selectNoneBtn = document.getElementById('select-none-btn');
+  if (selectAllBtn) selectAllBtn.addEventListener('click', () => setAllExchanges(true));
+  if (selectNoneBtn) selectNoneBtn.addEventListener('click', () => setAllExchanges(false));
+
   function showProgress(message) {
     if (!progressText) return;
     progressText.textContent = message;
@@ -72,6 +134,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Single path to the content script for all three export buttons.
   function requestExport(onDone, onFail) {
+    const boxes = Array.from(document.querySelectorAll('.exchange-checkbox'));
+    if (boxes.length && !boxes.some(b => b.checked)) {
+      onFail('Select at least one question to export.');
+      return;
+    }
+
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
       if (!tabs || tabs.length === 0) {
         showProgress('');
@@ -80,7 +148,7 @@ document.addEventListener('DOMContentLoaded', function() {
       }
       chrome.tabs.sendMessage(
         tabs[0].id,
-        { action: 'getChatText', style: currentStyle() },
+        { action: 'getChatText', style: currentStyle(), selection: selectedExchanges() },
         function (response) {
           showProgress('');
           if (chrome.runtime.lastError || !response) {
@@ -270,6 +338,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Request mappings from content script
     loadMappings();
+    loadOutline();
   });
 
   // Load mappings from content script
