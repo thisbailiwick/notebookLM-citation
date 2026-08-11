@@ -14,7 +14,8 @@ When you copy text from NotebookLM's chat interface, the citation numbers (like 
 - **Automatic Citation Mapping**: Automatically detects and maps citation numbers to source document names
 - **Markdown Output**: Copies as Markdown, preserving headings, lists, and bold/italic from the page
 - **Source Snippets**: Pulls the quoted passage behind each citation into your copies and exports
-- **Per-Answer Numbering**: Citation numbers restart at 1 in every answer, so each answer keeps its own source list
+- **Consecutive Numbering**: Citation numbers run consecutively across the export, not restarting at 1 in every answer
+- **Deduplicated Sources**: One sources block per export, each passage listed once with every number citing it
 - **Copy with Sources**: Copy chat text with citation sources appended at the bottom
 - **Draggable Legend Window**: Shows a real-time citation map directly on the NotebookLM page
 - **Smart Citation Expansion**: Clicks the "more" control on collapsed citation lists so hidden citations are captured
@@ -79,9 +80,16 @@ Jeff Foster presents nonduality as **an ordinary, ever-present reality**[^1].
 
 - **The Ocean and the Waves:** his foundational metaphor[^4][^5].
 
-[^1]: The Deepest Acceptance - Jeff Foster.epub
-    > The spiritual awakening I talk about in this book is not about
-    > protecting yourself more.
+---
+
+## Sources
+
+[^1]: The Deepest Acceptance - Jeff Foster.epub — also [^18], [^43]
+> The spiritual awakening I talk about in this book is not about
+> protecting yourself more.
+
+[^18]: See [^1].
+[^43]: See [^1].
 ```
 
 Citations are real Markdown footnotes: `[^1]` in the body resolves to a
@@ -89,6 +97,12 @@ Citations are real Markdown footnotes: `[^1]` in the body resolves to a
 document, citation numbers are renumbered consecutively over whatever you
 export — NotebookLM restarts them at 1 in every answer, so the second answer
 picks up where the first left off rather than colliding with it.
+
+Sources are gathered into one block at the end of the export. Every occurrence
+in the body keeps its own number, but a passage cited from several answers is
+written out once, carrying all of its numbers. Since Markdown allows only one
+definition per label, the first number holds the source and the rest get a
+one-line stub pointing at it, so every reference in the body still resolves.
 
 PDF export uses a plain-text version of the same document, since Markdown
 syntax would only be literal noise on the page.
@@ -109,7 +123,7 @@ request. Pick how it appears using **Source snippets in exports** in the popup:
 | Option | Body text | Sources block |
 | --- | --- | --- |
 | Citation numbers only | `[1]` | filename only |
-| Footnotes after each answer | `[1]` | filename + full snippet |
+| Footnotes at the end | `[1]` | filename + full snippet |
 | Full snippet inline | `[1: file — "…"]` | none |
 | Short inline + footnotes | `[1: "…"]` | filename + full snippet |
 

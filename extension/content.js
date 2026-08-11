@@ -443,28 +443,69 @@
     return text.split('\n').map(line => prefix + line).join('\n');
   }
 
-  function footnoteBlock(citations, style, flavor) {
+  // Two citations are the same source when they quote the same passage of the
+  // same file. Without a snippet to compare - the "citation numbers only"
+  // style never harvests one - the filename is all there is to go on, so every
+  // reference to a file collapses into one entry.
+  function sourceKey(citation) {
+    const snippet = (citation.snippet || '').replace(/\s+/g, ' ').trim();
+    return citation.filename + ' ' + snippet;
+  }
+
+  // The same passage usually gets cited from several answers. Each occurrence
+  // keeps its own number in the body, but the sources block lists the passage
+  // once, carrying every number that points at it. Insertion order means the
+  // first (lowest) number leads.
+  function dedupeSources(answers) {
+    const byKey = new Map();
+    answers.forEach(answer => {
+      answer.citations.forEach(c => {
+        const existing = byKey.get(sourceKey(c));
+        if (existing) {
+          if (existing.numbers.indexOf(c.citation) === -1) existing.numbers.push(c.citation);
+          return;
+        }
+        byKey.set(sourceKey(c), {
+          filename: c.filename,
+          snippet: c.snippet,
+          numbers: [c.citation]
+        });
+      });
+    });
+    return Array.from(byKey.values());
+  }
+
+  function sourcesBlock(sources, style, flavor) {
     if (flavor !== 'markdown') {
       const lines = ['--- Sources ---'];
-      citations.forEach(c => {
-        lines.push(`[${c.citation}] ${c.filename}`);
-        if (footnoteHasSnippet(style) && c.snippet) {
-          lines.push(indentLines(`"${c.snippet}"`, '    '));
+      sources.forEach(s => {
+        lines.push(`[${s.numbers.join('] [')}] ${s.filename}`);
+        if (footnoteHasSnippet(style) && s.snippet) {
+          lines.push(indentLines(`"${s.snippet}"`, '    '));
         }
       });
       return lines.join('\n');
     }
 
-    // Real markdown footnote definitions, so [^3] in the body resolves here.
-    // Continuation lines are indented four spaces to stay inside the note.
-    const lines = [];
-    citations.forEach(c => {
-      lines.push(`[^${c.citation}]: ${c.filename}`);
-      if (footnoteHasSnippet(style) && c.snippet) {
-        lines.push(indentLines(c.snippet, '    > '));
+    // Markdown ties one label to one definition, so only the first number can
+    // be a real footnote. The rest are listed beside the source to show the
+    // grouping, and each gets a one-line stub at the end of the block so no
+    // reference in the body is left dangling.
+    const blocks = [];
+    const stubs = [];
+    sources.forEach(s => {
+      const first = s.numbers[0];
+      const rest = s.numbers.slice(1);
+      const also = rest.length ? ` — also ${rest.map(n => `[^${n}]`).join(', ')}` : '';
+      let block = `[^${first}]: ${s.filename}${also}`;
+      if (footnoteHasSnippet(style) && s.snippet) {
+        block += '\n' + indentLines(s.snippet, '> ');
       }
+      blocks.push(block);
+      rest.forEach(n => stubs.push(`[^${n}]: See [^${first}].`));
     });
-    return lines.join('\n');
+    if (stubs.length) blocks.push(stubs.join('\n'));
+    return blocks.join('\n\n');
   }
 
   function buildDocument(answers, style, flavor, meta) {
@@ -494,10 +535,21 @@
         parts.push(answer.text);
       }
 
-      if (needsFootnotes(style) && answer.citations.length) {
-        parts.push(footnoteBlock(answer.citations, style, flavor));
-      }
     });
+
+    // One sources block for the whole export rather than one per answer:
+    // sources repeat across answers, and only a document-wide list can collect
+    // every number that points at a passage next to a single copy of it.
+    if (needsFootnotes(style)) {
+      const sources = dedupeSources(answers);
+      if (sources.length) {
+        if (flavor === 'markdown') {
+          parts.push('---');
+          parts.push('## Sources');
+        }
+        parts.push(sourcesBlock(sources, style, flavor));
+      }
+    }
 
     return parts.join('\n\n');
   }

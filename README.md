@@ -13,6 +13,7 @@ A Chrome extension that automatically maps citation numbers to source filenames 
 - **Markdown Export**: Copies as Markdown, preserving headings, lists, and bold/italic from the page
 - **Source Snippets**: Pulls the quoted passage behind each citation into your copies and exports
 - **Real Footnotes**: Citations export as `[^1]` references resolving to `[^1]:` definitions
+- **Deduplicated Sources**: One sources block per export, each passage listed once with every number citing it
 - **Select What to Export**: Choose which exchanges to include; all are selected by default
 - **Copy Chat with Citations**: Extract the full chat text with citation numbers preserved
 - **Citation Mapping Export**: Copy just the citation mappings to clipboard
@@ -78,14 +79,28 @@ He presents it as **an ordinary, ever-present reality**[^1].
 
 - **The Ocean and the Waves:** his foundational metaphor[^4][^5].
 
-[^1]: The Deepest Acceptance - Jeff Foster.epub
-    > The spiritual awakening I talk about in this book is not about
-    > protecting yourself more.
+---
+
+## Sources
+
+[^1]: The Deepest Acceptance - Jeff Foster.epub — also [^18], [^43]
+> The spiritual awakening I talk about in this book is not about
+> protecting yourself more.
+
+[^18]: See [^1].
+[^43]: See [^1].
 ```
 
 The snippet under each footnote is the passage NotebookLM shows when you hover a
 citation. How much of it appears is up to the **Source snippets in exports**
 setting, which ranges from filenames only to the full passage spliced inline.
+
+Sources are collected into one block at the end of the export rather than
+repeated after every answer. The same passage usually gets cited from several
+answers, so each occurrence keeps its own number in the body, but the passage
+itself is listed once with every number that points at it. Markdown allows only
+one definition per footnote label, so the extra numbers get a one-line stub and
+no reference in the body is left dangling.
 
 ## How It Works
 
@@ -141,6 +156,8 @@ The extension uses three main components:
   footnotes per answer, full snippet inline, or a short inline quote plus
   footnotes.
 - **Exchange selection.** Pick which questions to include; all by default.
+- **Deduplicated sources.** A passage cited from four answers is written out
+  once, with all four numbers beside it, instead of four times.
 - **Per-answer grouping** in the popup's citation list.
 
 ## Known Limitations
