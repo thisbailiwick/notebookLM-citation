@@ -188,6 +188,40 @@
       margin-top: 4px;
       line-height: 1.4;
     }
+    .exchange-list {
+      max-height: 130px;
+      overflow-y: auto;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      padding: 6px;
+      background: var(--bg-primary);
+    }
+    .exchange-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      padding: 3px 0;
+      font-size: 12px;
+      color: var(--text-primary);
+      line-height: 1.3;
+    }
+    .exchange-item input {
+      margin: 2px 0 0 0;
+      flex-shrink: 0;
+    }
+    .exchange-toolbar {
+      display: flex;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .exchange-toolbar button {
+      width: auto;
+      flex: 1;
+      padding: 4px 8px;
+      font-size: 11px;
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+    }
     .progress {
       font-size: 12px;
       color: var(--text-secondary);
@@ -208,6 +242,14 @@
   </div>
   <div class="mappings" id="mappings-container">
     <div class="loading">Loading citations...</div>
+  </div>
+  <div class="option" id="exchange-section" style="display: none;">
+    <label>Questions to include</label>
+    <div class="exchange-list" id="exchange-list"></div>
+    <div class="exchange-toolbar">
+      <button type="button" id="select-all-btn">Select all</button>
+      <button type="button" id="select-none-btn">Select none</button>
+    </div>
   </div>
   <div class="option">
     <label for="citation-style">Source snippets in exports</label>

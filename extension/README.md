@@ -14,7 +14,8 @@ When you copy text from NotebookLM's chat interface, the citation numbers (like 
 - **Per-Answer Numbering**: Citation numbers restart at 1 in every answer, so each answer keeps its own source list
 - **Copy with Sources**: Copy chat text with citation sources appended at the bottom
 - **Draggable Legend Window**: Shows a real-time citation map directly on the NotebookLM page
-- **Smart Citation Expansion**: Automatically expands hidden citation lists to capture all sources
+- **Smart Citation Expansion**: Clicks the "more" control on collapsed citation lists so hidden citations are captured
+- **Select What to Export**: Choose which exchanges to include; all are selected by default
 - **Popup Interface**: Quick access to citation mappings and controls
 - **Auto-Rescan**: Monitors page changes and updates mappings automatically
 - **Customizable Formatting**: Configure how citations and sources appear in copied text
@@ -71,19 +72,30 @@ flattened: headings stay headings, bulleted lists stay lists, and **bold** and
 
 ### How He Presents Nonduality
 
-Jeff Foster presents nonduality as **an ordinary, ever-present reality** [1].
+Jeff Foster presents nonduality as **an ordinary, ever-present reality**[^1].
 
-- **The Ocean and the Waves:** his foundational metaphor [4][5].
+- **The Ocean and the Waves:** his foundational metaphor[^4][^5].
 
-**Sources**
-
-- **[1]** The Deepest Acceptance - Jeff Foster.epub
-  > The spiritual awakening I talk about in this book is not about
-  > protecting yourself more.
+[^1]: The Deepest Acceptance - Jeff Foster.epub
+    > The spiritual awakening I talk about in this book is not about
+    > protecting yourself more.
 ```
+
+Citations are real Markdown footnotes: `[^1]` in the body resolves to a
+`[^1]:` definition. Because footnote labels have to be unique across a
+document, citation numbers are renumbered consecutively over whatever you
+export — NotebookLM restarts them at 1 in every answer, so the second answer
+picks up where the first left off rather than colliding with it.
 
 PDF export uses a plain-text version of the same document, since Markdown
 syntax would only be literal noise on the page.
+
+### Choosing What to Export
+
+When a notebook has more than one exchange, the popup lists them with
+checkboxes. Everything is selected by default; uncheck an exchange to leave it
+out. Citation numbering and the snippet harvest both follow the selection, so
+exporting one exchange numbers its citations from 1.
 
 ### Source Snippets
 
